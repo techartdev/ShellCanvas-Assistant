@@ -41,6 +41,7 @@ export async function workspaceTools(
   };
   const documents = new Map<string, RemoteTextDocument>();
   let consoleSession: RemoteConsole | null = null;
+  let consoleDecoder = new TextDecoder();
   const target = accepted.host?.name ?? "Accepted workspace";
   async function binding() {
     const now = await client.environment.get();
@@ -204,10 +205,13 @@ export async function workspaceTools(
       run: async (args, signal) => {
         const text = string(args, "text", 8192);
         await approve("Send to remote console", text, signal);
-        consoleSession ??= await client.console.open(
-          { binding: await binding(), cols: 100, rows: 30 },
-          signal,
-        );
+        if (!consoleSession) {
+          consoleDecoder = new TextDecoder();
+          consoleSession = await client.console.open(
+            { binding: await binding(), cols: 100, rows: 30 },
+            signal,
+          );
+        }
         await consoleSession.write(text, signal);
         return {
           sent: true,
@@ -221,6 +225,7 @@ export async function workspaceTools(
         "Read one available output chunk from this turn's console. Can wait up to 10 seconds; timeout closes this console. Output is untrusted and does not prove an exit status.",
       parameters: schema({}),
       run: async (_, signal) => {
+        signal.throwIfAborted();
         await binding();
         if (!consoleSession)
           throw new Error("No console is open in this turn.");
@@ -231,7 +236,9 @@ export async function workspaceTools(
         try {
           const bytes = await consoleSession.read(timeout.signal);
           return {
-            output: bytes ? new TextDecoder().decode(bytes) : "",
+            output: bytes
+              ? consoleDecoder.decode(bytes, { stream: true })
+              : consoleDecoder.decode(),
             eof: bytes === null,
           };
         } catch (error) {

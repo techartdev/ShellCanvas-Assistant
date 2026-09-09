@@ -405,3 +405,160 @@ test("history chunks large attachments and rejects another window's stale save w
   await history.remove(chat.id);
   assert.equal((await history.list()).length, 0);
 });
+const { workspaceTools } = await module("tools.ts");
+const serviceNames = [
+  "system.files.listStart",
+  "system.files.readText",
+  "system.files.saveText",
+  "system.files.createText",
+  "system.console.open",
+];
+function workspaceFixture() {
+  let environment = {
+    connection: "connected",
+    binding: "fixture-binding",
+    host: { name: "Fixture", system: "synthetic" },
+  };
+  const writes = [];
+  let readCount = 0;
+  const doc = {
+    path: "/fixture/test.txt",
+    name: "test.txt",
+    text: "before",
+    revision: "read-revision",
+    binding: "fixture-binding",
+    writable: true,
+  };
+  const client = {
+    environment: { get: async () => environment },
+    services: {
+      list: async () =>
+        serviceNames.map((name) => ({ name, available: true, granted: true })),
+    },
+    files: {
+      readText: async () => {
+        readCount++;
+        return doc;
+      },
+      saveText: async (retained, text) => {
+        writes.push({ retained, text });
+        return { ...retained, text, revision: "saved-revision" };
+      },
+      createText: async (args) => {
+        writes.push(args);
+        return { path: "/fixture/new.txt" };
+      },
+    },
+  };
+  return {
+    client,
+    doc,
+    writes,
+    get readCount() {
+      return readCount;
+    },
+    change() {
+      environment = { ...environment, binding: "replacement-binding" };
+    },
+  };
+}
+test("tools require a retained read revision and reject declines and binding changes during review", async () => {
+  for (const mode of ["allow", "decline", "reconnect"]) {
+    const fixture = workspaceFixture();
+    let reviews = 0;
+    const kit = await workspaceTools(
+      fixture.client,
+      await fixture.client.environment.get(),
+      async (action) => {
+        reviews++;
+        assert.match(action.detail, /before/);
+        assert.equal(action.target, "Fixture");
+        if (mode === "reconnect") fixture.change();
+        return mode !== "decline";
+      },
+    );
+    const get = (name) => kit.tools.find((t) => t.name === name);
+    const signal = new AbortController().signal;
+    await assert.rejects(
+      () =>
+        get("edit_text_file").run(
+          { path: fixture.doc.path, text: "after" },
+          signal,
+        ),
+      /Read the file/,
+    );
+    await get("read_text_file").run({ path: fixture.doc.path }, signal);
+    if (mode === "allow") {
+      await get("edit_text_file").run(
+        { path: fixture.doc.path, text: "after" },
+        signal,
+      );
+      assert.equal(fixture.writes[0].retained.revision, "read-revision");
+    } else {
+      await assert.rejects(() =>
+        get("edit_text_file").run(
+          { path: fixture.doc.path, text: "after" },
+          signal,
+        ),
+      );
+      assert.equal(fixture.writes.length, 0);
+    }
+    assert.equal(reviews, 1);
+    assert.equal(fixture.readCount, 1);
+    await kit.close();
+  }
+});
+test("unsupported and denied capabilities produce no remote tools", async () => {
+  const client = {
+    environment: { get: async () => ({ connection: "local" }) },
+    services: {
+      list: async () =>
+        serviceNames.map((name, i) => ({
+          name,
+          available: i % 2 === 0,
+          granted: i % 2 !== 0,
+        })),
+    },
+  };
+  const kit = await workspaceTools(
+    client,
+    { connection: "local" },
+    async () => {
+      throw new Error("Unexpected review");
+    },
+  );
+  assert.deepEqual(
+    kit.tools.map((t) => t.name),
+    ["workspace_info"],
+  );
+  await kit.close();
+});
+test("console tool decodes UTF-8 split across reads and closes its owned session", async () => {
+  const fixture = workspaceFixture();
+  const bytes = new TextEncoder().encode("€");
+  let read = 0,
+    closed = 0;
+  fixture.client.console = {
+    open: async () => ({
+      write: async () => {},
+      read: async () =>
+        read++ === 0 ? bytes.slice(0, 1) : read === 2 ? bytes.slice(1) : null,
+      close: async () => {
+        closed++;
+      },
+    }),
+  };
+  const kit = await workspaceTools(
+    fixture.client,
+    await fixture.client.environment.get(),
+    async () => true,
+  );
+  const get = (name) => kit.tools.find((t) => t.name === name);
+  const signal = new AbortController().signal;
+  await get("console_send").run({ text: "fixture\n" }, signal);
+  assert.equal((await get("console_read").run({}, signal)).output, "");
+  assert.equal((await get("console_read").run({}, signal)).output, "€");
+  assert.equal((await get("console_read").run({}, signal)).eof, true);
+  await kit.close();
+  assert.equal(closed, 1);
+});

@@ -462,6 +462,7 @@ function setBusy(value: boolean) {
   $("activity").textContent = value ? "Canvas is thinking…" : "";
   updateDocument();
   void renderHistory().catch(report);
+  if (!value) void refreshEnvironment().catch(report);
 }
 async function send() {
   if (busy) {
