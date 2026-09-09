@@ -19,12 +19,13 @@ Catalina does not mean installed apps are enabled there.
 
 ## Connect a model
 
-Open assistant settings. Configure the **full Chat Completions endpoint**, API
-key and model ID. For OpenAI the endpoint is
-`https://api.openai.com/v1/chat/completions`. Compatible local servers can use
-their own endpoint. A model must support streaming Chat Completions; tool use
-and images also require model support. Turn off workspace tools for chat-only
-models. No account, model or billing entitlement is supplied by this app.
+Open assistant settings and configure the full endpoint, API key and model ID.
+For OpenAI use **https://api.openai.com/v1/responses**. This supports reasoning
+models such as GPT-5.6 with function tools. Compatible servers can instead use
+their full Chat Completions endpoint (often ending in /v1/chat/completions).
+The app chooses Responses for paths ending in /responses; all other paths use
+Chat Completions. Tools and images also require model support. Turn off workspace
+tools for chat-only models. No model or billing entitlement is supplied by this app.
 
 The endpoint/key form belongs to ShellCanvas. Keys are held by the native host,
 optionally remembered in the operating system credential store, and are not

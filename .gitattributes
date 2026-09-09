@@ -1,6 +1,6 @@
-dist/app.shellcanvas.json -text
 vendor/*.tgz binary
 *.ts text eol=lf
 *.css text eol=lf
 *.md text eol=lf
 *.json text eol=lf
+dist/app.shellcanvas.json -text

@@ -6,7 +6,7 @@ dependency on ShellCanvas is the public SDK's isolated, window-owned channel.
 | Responsibility | Owner |
 | --- | --- |
 | Layout, messages, attachments, review cards | `main.ts`, `style.css` |
-| Streaming Chat Completions and bounded tool loop | `agent.ts` |
+| Streaming Responses/Chat Completions and bounded tool loop | `agent.ts` |
 | Tool schemas and accepted-workspace operations | `tools.ts` |
 | Revision-checked conversation records | `history.ts` |
 | Endpoint configuration, HTTP, OS credentials | ShellCanvas `network` API |
@@ -14,7 +14,17 @@ dependency on ShellCanvas is the public SDK's isolated, window-owned channel.
 
 ## Protocol
 
-The model endpoint is the full URL of a streaming OpenAI-compatible Chat
+Endpoints ending in `/responses` use the Responses API; other endpoints use Chat
+Completions. Responses requests set `store: false`, include encrypted reasoning
+context, and replay completed output items with their original tool call IDs.
+Opaque reasoning items are retained locally with the conversation and replayed
+only to the same endpoint and model. A different provider gets the normalized
+visible messages and tool results. A `response.completed` event is required before
+any tools run; failed, incomplete and interrupted streams cannot dispatch them.
+The [official migration guide](https://developers.openai.com/api/docs/guides/migrate-to-responses)
+describes this stateless reasoning flow.
+
+In Chat Completions mode, the endpoint is the full URL of a streaming compatible Chat
 Completions resource. Requests use `messages`, `stream: true`, and optional
 function `tools`. The app parses SSE events across arbitrary UTF-8 chunk
 boundaries, accumulates tool-call fragments and executes only complete calls
