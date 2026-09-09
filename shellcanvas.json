@@ -1,0 +1,9 @@
+{
+  "$schema": "./node_modules/@shellcanvas/app-sdk/schemas/app-manifest.schema.json",
+  "format": 1,
+  "kind": "app",
+  "id": "dev.shellcanvas.assistant",
+  "version": "0.1.0",
+  "title": "Canvas Assistant",
+  "permissions": ["system.storage", "system.dialogs", "system.network", "system.clipboard.read", "system.clipboard.write", "system.clipboard.image.read", "files.read", "files.edit", "files.create", "system.console"]
+}

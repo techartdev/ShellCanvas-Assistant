@@ -1,0 +1,17 @@
+{
+  "name": "dev.shellcanvas.assistant",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "build": "npm run check && shellcanvas-app build .",
+    "test": "node --test test.mjs",
+    "package:repository": "shellcanvas-app repository . --description \"An independent assistant for your ShellCanvas workspace.\""
+  },
+  "devDependencies": {
+    "@shellcanvas/app-sdk": "file:vendor/sdk.tgz",
+    "typescript": "5.8.3",
+    "esbuild": "0.25.12"
+  }
+}

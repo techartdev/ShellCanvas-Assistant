@@ -1,0 +1,6 @@
+node_modules/
+*.tsbuildinfo
+.local/
+.env
+.env.*
+!dist/app.shellcanvas.json

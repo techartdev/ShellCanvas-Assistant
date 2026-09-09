@@ -1,0 +1,64 @@
+# Architecture and boundaries
+
+Canvas Assistant is a separately built, installable app. Its only runtime
+dependency on ShellCanvas is the public SDK's isolated, window-owned channel.
+
+| Responsibility | Owner |
+| --- | --- |
+| Layout, messages, attachments, review cards | `main.ts`, `style.css` |
+| Streaming Chat Completions and bounded tool loop | `agent.ts` |
+| Tool schemas and accepted-workspace operations | `tools.ts` |
+| Revision-checked conversation records | `history.ts` |
+| Endpoint configuration, HTTP, OS credentials | ShellCanvas `network` API |
+| File/console routing, grants, binding revocation | ShellCanvas host brokers |
+
+## Protocol
+
+The model endpoint is the full URL of a streaming OpenAI-compatible Chat
+Completions resource. Requests use `messages`, `stream: true`, and optional
+function `tools`. The app parses SSE events across arbitrary UTF-8 chunk
+boundaries, accumulates tool-call fragments and executes only complete calls
+after a completed model round. Tool results are appended with the original call
+ID. Truncated/malformed responses cannot dispatch tools. Cancellation preserves
+completed results; pending calls receive canceled results so history does not
+contain dangling tool calls. Requests are not automatically retried.
+
+The native host makes a POST to the app's configured exact endpoint using its
+current connection revision. The app cannot supply an Authorization header,
+read the key, choose a URL per request or follow redirects. Setting up another
+endpoint requires the desktop's trusted connection form. A changed endpoint
+requires entering a new key, rather than forwarding a previous key silently.
+
+## Tools
+
+Discover method availability and grants before offering tools. Capture the
+accepted binding for the turn. Check it before each remote action and after
+approval. Reads retain file revisions; edits use the retained document, never a
+fresh revision selected just to bypass a conflict. Console input is reviewed
+verbatim. A console's transport may differ from the file provider; do not infer
+that a file path belongs to its shell. There is no hidden native exec fallback.
+
+Approval UI belongs to this trusted assistant app. The host separately enforces
+the app's installation grants and source binding. A malicious installed app is
+not obliged to implement the assistant's per-action approval flow; grant only
+the access you trust that package to use.
+
+## History and attachments
+
+Immutable conversation chunks are written before a revision-checked header
+commit. A conflict preserves the other writer's header and removes the new
+unreferenced chunks. Old chunks are removed after a successful header update.
+History is per app identity, separate from credentials. Without storage grants,
+an explicit memory-only backend keeps this window usable.
+
+Attachments are deliberate context. Local file input is user-selected browser
+file access; remote selections use shared ShellCanvas dialogs and retained
+bindings. Clipboard access uses separately granted SDK services. Binary files
+are not treated as text; images are resized and displayed before sending.
+
+## Sources
+
+The [official Chat Completions reference](https://developers.openai.com/api/reference/resources/chat)
+describes the wire format. No OpenAI SDK, CLI or Node sidecar runs in the app.
+The design follows ShellCanvas's existing optional WispCrew assessment; no
+WispCrew implementation or local-shell tool defaults were copied.
