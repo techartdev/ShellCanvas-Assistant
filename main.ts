@@ -7,6 +7,13 @@ import {
   type AppValue,
   type Json,
 } from "@shellcanvas/app-sdk";
+import {
+  currentHost,
+  needsHostChoice,
+  sameAcceptedHost,
+  branchConversation,
+  hostInstructions,
+} from "./host-context";
 import { activeDeadline, runLimits, RunPaused } from "./run-budget";
 import { runAgent, type Message, type ToolCall } from "./agent";
 import { workspaceTools, operatingGuide, type ReviewAction } from "./tools";
@@ -37,7 +44,7 @@ const icons: Record<string, string> = {
 const icon = (name: string) =>
   `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] ?? icons.spark}</svg>`;
 const root = document.querySelector<HTMLDivElement>("#root")!;
-root.innerHTML = `<main class="assistant-shell"><aside class="sidebar"><div class="brand"><span class="brand-mark">${icon("spark")}</span><span>Canvas<span class="brand-sub">ASSISTANT</span></span></div><button id="new-chat" class="new-chat">${icon("plus")}New conversation</button><div class="history-heading">YOUR CONVERSATIONS<button id="refresh-history" class="icon-button" title="Refresh conversations" aria-label="Refresh conversations">↻</button></div><nav id="history" aria-label="Conversations"></nav><div class="sidebar-bottom"><span class="privacy-dot"></span><div>History stays here<small>Stored locally in ShellCanvas</small></div></div></aside><section class="conversation"><header class="chat-header"><button id="toggle-sidebar" class="icon-button mobile-menu" aria-label="Toggle conversation list">${icon("menu")}</button><div><div class="workspace-label"><span class="status-dot"></span><span id="host-name">Your workspace</span></div><span class="workspace-caption" id="host-caption">A little help, right where you work.</span></div><div class="header-actions"><button id="model-button" class="model-button">${icon("spark")}<span id="model-label">Connect a model</span><span>⌄</span></button><button id="settings" class="icon-button" aria-label="Assistant settings" title="Assistant settings">${icon("settings")}</button></div></header><div id="notice" class="notice" role="status" hidden></div><div id="messages" class="messages" tabindex="0"><section id="welcome" class="welcome"><div class="welcome-mark">${icon("spark")}</div><p class="eyebrow">A THOUGHTFUL PAIR OF HANDS</p><h1>Make room for<br><em>what comes next.</em></h1><p class="welcome-description">Explore your host, untangle a problem, or turn an idea into a few less things to do.</p><div class="suggestions"><button data-prompt="Help me understand this workspace. Discover its available services and explain what we can do here.">${icon("terminal")}<span>Get to know this host<small>Start with a little orientation</small></span>↗</button><button data-prompt="Explore the default file directory and summarize what is there without reading sensitive files.">${icon("folder")}<span>Find my way around<small>Explore files and folders</small></span>↗</button><button data-prompt="I have a problem to investigate. Help me narrow it down step by step, and ask what symptoms I am seeing.">${icon("spark")}<span>Untangle a problem<small>Think it through together</small></span>↗</button><button data-prompt="Help me review a configuration file. I will attach or choose the file; explain it before proposing edits.">${icon("file")}<span>Review a configuration<small>Understand before changing</small></span>↗</button></div></section><div id="thread" aria-live="off"></div></div><div class="composer-area"><div id="activity" class="activity" hidden></div><section id="run-paused" class="run-paused" hidden><span id="pause-reason"></span><button id="continue-run">Continue task</button></section><section id="approval" class="approval" hidden aria-label="Review assistant action"><p class="eyebrow">YOUR REVIEW</p><h3></h3><p class="approval-target"></p><pre tabindex="0"></pre><div><button id="deny-action">Decline</button><button id="approve-action" class="primary">Approve this action</button></div></section><div class="composer"><div id="attachments" class="attachments"></div><textarea id="prompt" rows="2" placeholder="Ask anything about your workspace…" aria-label="Message Canvas Assistant"></textarea><div class="composer-tools"><div><button id="attach-local" class="icon-button" aria-label="Attach local files" title="Attach local text or images">${icon("attach")}</button><button id="attach-remote" class="icon-button" aria-label="Attach remote file" title="Choose a remote text file">${icon("folder")}</button><button id="paste-attachment" class="icon-button" aria-label="Attach from clipboard" title="Attach clipboard image or text">${icon("clipboard")}</button><span class="composer-hint">Enter to send · Shift + Enter for a new line</span></div><button id="send" class="send-button" aria-label="Send message" title="Send message">${icon("arrow")}</button></div></div><div class="composer-footer"><span id="tools-label">Connecting to your desktop…</span><span>Changes stay in your hands.</span></div></div></section><section id="settings-panel" class="settings-panel" hidden aria-label="Assistant settings"><header><div><p class="eyebrow">MAKE IT YOURS</p><h2>Your assistant</h2></div><button id="close-settings" class="icon-button" aria-label="Close settings">${icon("close")}</button></header><label>Model<input id="model-input" placeholder="Enter a model ID" spellcheck="false"/></label><p class="settings-help">Use the model ID from your provider. Endpoints ending in /responses use the Responses API; other endpoints use Chat Completions.</p><div class="connection-card"><span class="eyebrow">MODEL CONNECTION</span><p id="endpoint-label">No endpoint configured</p><button id="configure-model">Configure endpoint & key</button><button id="forget-model" class="quiet">Forget connection</button></div><label class="setting-check"><input id="tools-enabled" type="checkbox" checked/><span>Allow workspace tools<small>Reads follow your task. Changes and console input require your review.</small></span></label><p class="settings-help">Your messages, selected attachments and requested tool results are sent to this endpoint when you send. History and credentials stay separate.</p><label>Model rounds per run<input id="run-rounds" type="number" min="1" step="1"/></label><p class="settings-help">One round is a model response, which may use several tools. Default: 30. Set any positive whole number of rounds.</p><label>Active minutes per run<input id="run-minutes" type="number" min="1" max="240" step="1"/></label><p class="settings-help">Default: 30 minutes. Time reading action approvals is excluded. Larger limits can use more API credit. You can stop at any time.</p><div class="settings-actions"><button id="save-settings" class="primary">Save settings</button><button id="export-chat">Export conversation</button><button id="duplicate-chat">Save a copy</button><button id="delete-chat" class="danger">Delete conversation</button></div></section><input id="local-files" type="file" accept="image/png,image/jpeg,image/webp,.txt,.md,.json,.yaml,.yml,.toml,.ini,.conf,.log,.csv,.ts,.js,.py,.rs,.sh,.xml,.html,.css" multiple hidden/></main>`;
+root.innerHTML = `<main class="assistant-shell"><aside class="sidebar"><div class="brand"><span class="brand-mark">${icon("spark")}</span><span>Canvas<span class="brand-sub">ASSISTANT</span></span></div><button id="new-chat" class="new-chat">${icon("plus")}New conversation</button><div class="history-heading">YOUR CONVERSATIONS<button id="refresh-history" class="icon-button" title="Refresh conversations" aria-label="Refresh conversations">↻</button></div><nav id="history" aria-label="Conversations"></nav><div class="sidebar-bottom"><span class="privacy-dot"></span><div>History stays here<small>Stored locally in ShellCanvas</small></div></div></aside><section class="conversation"><header class="chat-header"><button id="toggle-sidebar" class="icon-button mobile-menu" aria-label="Toggle conversation list">${icon("menu")}</button><div><div class="workspace-label"><span class="status-dot"></span><span id="host-name">Your workspace</span></div><span class="workspace-caption" id="host-caption">A little help, right where you work.</span></div><div class="header-actions"><button id="model-button" class="model-button">${icon("spark")}<span id="model-label">Connect a model</span><span>⌄</span></button><button id="settings" class="icon-button" aria-label="Assistant settings" title="Assistant settings">${icon("settings")}</button></div></header><div id="host-context" class="host-context" role="status" hidden></div><div id="notice" class="notice" role="status" hidden></div><div id="messages" class="messages" tabindex="0"><section id="welcome" class="welcome"><div class="welcome-mark">${icon("spark")}</div><p class="eyebrow">A THOUGHTFUL PAIR OF HANDS</p><h1>Make room for<br><em>what comes next.</em></h1><p class="welcome-description">Explore your host, untangle a problem, or turn an idea into a few less things to do.</p><div class="suggestions"><button data-prompt="Help me understand this workspace. Discover its available services and explain what we can do here.">${icon("terminal")}<span>Get to know this host<small>Start with a little orientation</small></span>↗</button><button data-prompt="Explore the default file directory and summarize what is there without reading sensitive files.">${icon("folder")}<span>Find my way around<small>Explore files and folders</small></span>↗</button><button data-prompt="I have a problem to investigate. Help me narrow it down step by step, and ask what symptoms I am seeing.">${icon("spark")}<span>Untangle a problem<small>Think it through together</small></span>↗</button><button data-prompt="Help me review a configuration file. I will attach or choose the file; explain it before proposing edits.">${icon("file")}<span>Review a configuration<small>Understand before changing</small></span>↗</button></div></section><div id="thread" aria-live="off"></div></div><div class="composer-area"><div id="activity" class="activity" hidden></div><section id="run-paused" class="run-paused" hidden><span id="pause-reason"></span><button id="continue-run">Continue task</button></section><section id="approval" class="approval" hidden aria-label="Review assistant action"><p class="eyebrow">YOUR REVIEW</p><h3></h3><p class="approval-target"></p><pre tabindex="0"></pre><div><button id="deny-action">Decline</button><button id="approve-action" class="primary">Approve this action</button></div></section><div class="composer"><div id="attachments" class="attachments"></div><textarea id="prompt" rows="2" placeholder="Ask anything about your workspace…" aria-label="Message Canvas Assistant"></textarea><div class="composer-tools"><div><button id="attach-local" class="icon-button" aria-label="Attach local files" title="Attach local text or images">${icon("attach")}</button><button id="attach-remote" class="icon-button" aria-label="Attach remote file" title="Choose a remote text file">${icon("folder")}</button><button id="paste-attachment" class="icon-button" aria-label="Attach from clipboard" title="Attach clipboard image or text">${icon("clipboard")}</button><span class="composer-hint">Enter to send · Shift + Enter for a new line</span></div><button id="send" class="send-button" aria-label="Send message" title="Send message">${icon("arrow")}</button></div></div><div class="composer-footer"><span id="tools-label">Connecting to your desktop…</span><span>Changes stay in your hands.</span></div></div></section><section id="settings-panel" class="settings-panel" hidden aria-label="Assistant settings"><header><div><p class="eyebrow">MAKE IT YOURS</p><h2>Your assistant</h2></div><button id="close-settings" class="icon-button" aria-label="Close settings">${icon("close")}</button></header><label>Model<input id="model-input" placeholder="Enter a model ID" spellcheck="false"/></label><p class="settings-help">Use the model ID from your provider. Endpoints ending in /responses use the Responses API; other endpoints use Chat Completions.</p><div class="connection-card"><span class="eyebrow">MODEL CONNECTION</span><p id="endpoint-label">No endpoint configured</p><button id="configure-model">Configure endpoint & key</button><button id="forget-model" class="quiet">Forget connection</button></div><label class="setting-check"><input id="tools-enabled" type="checkbox" checked/><span>Allow workspace tools<small>Reads follow your task. Changes and console input require your review.</small></span></label><p class="settings-help">Your messages, selected attachments and requested tool results are sent to this endpoint when you send. History and credentials stay separate.</p><label>Model rounds per run<input id="run-rounds" type="number" min="1" step="1"/></label><p class="settings-help">One round is a model response, which may use several tools. Default: 30. Set any positive whole number of rounds.</p><label>Active minutes per run<input id="run-minutes" type="number" min="1" max="240" step="1"/></label><p class="settings-help">Default: 30 minutes. Time reading action approvals is excluded. Larger limits can use more API credit. You can stop at any time.</p><div class="settings-actions"><button id="save-settings" class="primary">Save settings</button><button id="export-chat">Export conversation</button><button id="duplicate-chat">Save a copy</button><button id="delete-chat" class="danger">Delete conversation</button></div></section><input id="local-files" type="file" accept="image/png,image/jpeg,image/webp,.txt,.md,.json,.yaml,.yml,.toml,.ini,.conf,.log,.csv,.ts,.js,.py,.rs,.sh,.xml,.html,.css" multiple hidden/></main>`;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 const prompt = $<HTMLTextAreaElement>("prompt");
@@ -87,6 +94,7 @@ let busy = false,
 let active: AbortController | null = null,
   currentAssistant: HTMLElement | null = null,
   currentAssistantText = "";
+let checkingHost = false;
 let pendingReview: ((approved: boolean) => void) | null = null;
 const toolCards = new Map<string, HTMLElement>();
 const report = (error: unknown) =>
@@ -162,7 +170,7 @@ async function renderHistory() {
   }
 }
 async function switchConversation(id?: string) {
-  if (busy) return;
+  if (busy || checkingHost) return;
   if (dirty) await save();
   await saves;
   if (id) {
@@ -244,12 +252,104 @@ function messageCard(role: "user" | "assistant", content: string) {
   $("thread").append(article);
   return text;
 }
+function renderHostContext() {
+  const target = environment && currentHost(environment);
+  const warning = $("host-context");
+  warning.hidden = !conversation.messages.length;
+  if (warning.hidden) return;
+  const origin =
+    conversation.workspace?.name ||
+    conversation.host ||
+    "Unverified original host";
+  warning.textContent =
+    target && !needsHostChoice(conversation, target)
+      ? `Conversation host: ${origin}`
+      : `Conversation host: ${origin}. ${target ? `Current host: ${target.name}. Choose where to continue when you send.` : "Connect and accept a host to continue."}`;
+}
+async function checkConversationHost(
+  accepted: AppEnvironment,
+): Promise<boolean> {
+  const target = currentHost(accepted);
+  if (!target) {
+    notify(
+      "The workspace identity is unavailable. Accept the connection, or update ShellCanvas to a version with conversation host protection.",
+      true,
+    );
+    return false;
+  }
+  if (!needsHostChoice(conversation, target)) return true;
+  const original =
+    conversation.workspace?.name || conversation.host || "an unverified host";
+  const sourceId = conversation.id;
+  const choice = await client.system.dialogs.messageBox({
+    title: "Choose the conversation host",
+    message: `This conversation belongs to ${original}. You are now on ${target.name}. ${conversation.workspace ? "" : "This older chat has no verified workspace identity. "}Start a new chat, return to the original host using the desktop host menu, or create a separate continuation with the old messages as reference. No request has been sent.`,
+    kind: "warning",
+    buttons: [
+      { id: "new", label: `New chat on ${target.name}` },
+      { id: "back", label: "Use original host" },
+      { id: "branch", label: `Create continuation on ${target.name}` },
+      { id: "cancel", label: "Cancel" },
+    ],
+    defaultId: "new",
+    cancelId: "cancel",
+  });
+  if (choice === "cancel" || !choice) return false;
+  if (
+    conversation.id !== sourceId ||
+    !sameAcceptedHost(accepted, await client.environment.get())
+  ) {
+    notify(
+      "The host changed while you were choosing. Send again to review the current host.",
+      true,
+    );
+    return false;
+  }
+  if (choice === "back") {
+    notify(
+      `Select or reconnect ${original} using the desktop host menu, then open this conversation there.`,
+    );
+    return false;
+  }
+  if (choice !== "new" && choice !== "branch") return false;
+  // Finish saving the original before assigning a different conversation/record.
+  if (dirty) await save();
+  await saves;
+  if (choice === "new") {
+    conversation = fresh();
+    conversation.workspace = target;
+    conversation.host = target.name;
+  } else conversation = branchConversation(conversation, target);
+  record = null;
+  prompt.value = conversation.draft;
+  changed();
+  await save();
+  renderThread();
+  renderAttachments();
+  notify(
+    choice === "new"
+      ? `New chat on ${target.name}. Your previous draft remains in the original chat.`
+      : `Separate continuation on ${target.name} is ready. Review the context, then send your next message.`,
+  );
+  // Choosing a host never also dispatches a model request.
+  return false;
+}
 function renderThread() {
+  renderHostContext();
   $("thread").replaceChildren();
   toolCards.clear();
   $("welcome").hidden =
     conversation.messages.length > 0 || !!conversation.partial;
-  for (const message of conversation.messages) {
+  for (const [index, message] of conversation.messages.entries()) {
+    for (const change of conversation.hostChanges ?? [])
+      if (change.messageIndex === index)
+        $("thread").append(
+          el(
+            "div",
+            "host-change",
+            `Host changed: ${change.from} → ${change.to} · Separate continuation`,
+          ),
+        );
     if (message.role === "user" || message.role === "assistant") {
       let content = typeof message.content === "string" ? message.content : "";
       if (Array.isArray(message.content))
@@ -317,6 +417,15 @@ function renderThread() {
   $("pause-reason").textContent = paused;
   if (conversation.error && !paused) notify(conversation.error, true);
   $("messages").scrollTop = $("messages").scrollHeight;
+  for (const change of conversation.hostChanges ?? [])
+    if (change.messageIndex === conversation.messages.length)
+      $("thread").append(
+        el(
+          "div",
+          "host-change",
+          `Host changed: ${change.from} → ${change.to} · Separate continuation`,
+        ),
+      );
 }
 function toolCard(
   call: ToolCall,
@@ -484,12 +593,13 @@ function setBusy(value: boolean) {
   if (!value) void refreshEnvironment().catch(report);
 }
 async function send(continuing = false) {
+  if (checkingHost) return;
   if (busy) {
     active?.abort(new Error("Stopped by you."));
     pendingReview?.(false);
     return;
   }
-  if (!ready) return;
+  if (!ready || checkingHost) return;
   if (!connection || !model.trim()) {
     showSettings(true);
     notify("Choose an endpoint and model to begin.");
@@ -497,7 +607,26 @@ async function send(continuing = false) {
   }
   if (!continuing && !prompt.value.trim() && !conversation.attachments.length)
     return;
-  const accepted = await client.environment.get();
+  checkingHost = true;
+  setBusy(true);
+  $("activity").textContent = "Checking conversation host…";
+  let accepted: AppEnvironment;
+  try {
+    accepted = await client.environment.get();
+    if (!(await checkConversationHost(accepted))) return;
+    if (!sameAcceptedHost(accepted, await client.environment.get())) {
+      notify(
+        "The host changed before sending. Review the connection and try again.",
+        true,
+      );
+      return;
+    }
+  } finally {
+    checkingHost = false;
+    setBusy(false);
+  }
+  if (!conversation.messages.length) conversation.workspace = currentHost(accepted)!;
+  else conversation.workspace ??= currentHost(accepted)!;
   const turn = new AbortController();
   active = turn;
   const deadline = activeDeadline(turn, limits.minutes * 60000);
@@ -538,7 +667,9 @@ async function send(continuing = false) {
       {
         role: "system",
         content:
-          operatingGuide + `\nAccepted workspace: ${JSON.stringify(accepted)}`,
+          operatingGuide +
+          hostInstructions(conversation) +
+          `\nAccepted workspace: ${JSON.stringify(accepted)}`,
       },
       ...conversation.messages,
       user,
@@ -552,7 +683,7 @@ async function send(continuing = false) {
       conversation.title === "New conversation"
         ? (text || "Image conversation").slice(0, 60)
         : conversation.title;
-    conversation.host = accepted.host?.name ?? "Local workspace";
+    conversation.host = conversation.workspace!.name;
     if (!continuing) {
       conversation.draft = "";
       conversation.attachments = [];
@@ -659,6 +790,7 @@ function updateConnection() {
 }
 async function refreshEnvironment() {
   environment = await client.environment.get();
+  renderHostContext();
   $("host-name").textContent =
     environment.host?.name ??
     (environment.connection === "local"

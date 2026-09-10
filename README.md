@@ -12,7 +12,9 @@ and its permissions. The repository contains a prebuilt package plus a root
 `shellcanvas.repo.json` with its SHA-256. Installation downloads those files;
 it does not install Node, run build scripts or contact an app registry.
 
-Requires a ShellCanvas build with the app network API. The first native client
+Version 0.1.4 requires a ShellCanvas build with the app network API and
+`environment.workspaceId` (conversation host protection). Update the desktop
+before updating this app; older desktops cannot send from this version. The first native client
 target is Windows. ShellCanvas currently gates installed third-party app windows
 on macOS/Linux pending their isolation proofs; a working built-in desktop on
 Catalina does not mean installed apps are enabled there.
@@ -33,6 +35,13 @@ part of the app's history, settings or package. The host will not follow HTTP
 redirects or send a retained key to a changed endpoint.
 
 ## Working together
+
+Conversations remain readable on any host. Before Send or Continue on a different
+workspace, choose a fresh chat (default), return through the desktop host menu,
+or create a separate continuation. Choosing a continuation preserves the original
+and shows a host-change marker; review it and send your next message explicitly.
+Existing chats without verified target identity need this choice once to create
+a bound continuation. Reconnecting to the same target does not require branching.
 
 - Conversations and drafts are stored locally per app identity. Another open
   window cannot silently replace a newer saved conversation; use **Save a copy**

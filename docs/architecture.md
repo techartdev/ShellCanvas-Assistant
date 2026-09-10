@@ -89,3 +89,25 @@ Console reads batch nearby byte fragments (up to roughly 64k characters or one
 second of collection, with a 150 ms quiet window). An idle wait returns after
 10 seconds without canceling the stream; the next read reuses the pending read.
 This bounds each result without consuming a model round for every SSH fragment.
+
+## Conversation host boundaries
+
+A conversation stores the SDK's opaque `workspaceId` separately from its display
+name and ephemeral accepted `binding`. Send and Continue check it before any
+provider request, even with tools disabled. Reconnecting to the same configured
+target preserves identity; different targets, accounts, or composite source
+configurations require a choice. This is target association, not machine authentication.
+
+Chats remain readable everywhere. The default is a fresh chat. Choosing a
+continuation saves a new conversation with a visible boundary and explicit model
+instructions to discover the new workspace; original history/draft stay intact.
+Opaque provider reasoning is removed from the branch, while visible paired tool
+history remains reference context. No approvals, live consoles or file revisions
+are reused. Choosing a destination does not send a message; the user reviews the
+new conversation before sending. Returning to the original host uses the desktop
+host selector (the SDK does not give this app permission to switch workspaces).
+
+Legacy chats have only a label and therefore require an explicit choice, even
+when the label matches. Unknown identity or unaccepted/disconnected environments
+cannot send. Older desktops without workspaceId must be updated. A connection
+change while confirmation is open invalidates that choice.

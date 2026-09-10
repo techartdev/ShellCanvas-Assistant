@@ -3,7 +3,7 @@
   "format": 1,
   "kind": "app",
   "id": "dev.shellcanvas.assistant",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "title": "Canvas Assistant",
   "permissions": [
     "system.storage",

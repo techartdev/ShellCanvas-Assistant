@@ -993,3 +993,25 @@ svg {
   background: #31527b;
   white-space: nowrap;
 }
+
+.host-context {
+  padding: 9px 28px;
+  border-bottom: 1px solid #526078;
+  color: #cedcf0;
+  background: #202b3b;
+  font-size: 11px;
+  line-height: 1.5;
+  flex-shrink: 0;
+  overflow-wrap: anywhere;
+}
+.host-change {
+  margin: 24px 0;
+  padding: 12px 16px;
+  border: 1px solid #536784;
+  border-radius: 10px;
+  background: #233249;
+  color: #dae7fc;
+  text-align: center;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}

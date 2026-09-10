@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { AppStorageAPI, AppValue, Json } from "@shellcanvas/app-sdk";
+import type { HostContext, HostChange } from "./host-context";
 import type { Message } from "./agent";
 export interface Attachment {
   id: string;
@@ -16,6 +17,8 @@ export interface Conversation {
   draft: string;
   attachments: Attachment[];
   host: string;
+  workspace?: HostContext;
+  hostChanges?: HostChange[];
   partial?: string;
   error?: string;
   paused?: string;

@@ -721,3 +721,95 @@ test("cancel interrupts a pending console read promptly", async () => {
   controller.abort(new Error("stop fixture"));
   await assert.rejects(pending, /stop fixture/);
 });
+
+const {
+  currentHost,
+  needsHostChoice,
+  sameAcceptedHost,
+  branchConversation,
+  hostInstructions,
+} = await module("host-context.ts");
+const envA = {
+  connection: "connected",
+  binding: "lease-a",
+  workspaceId: "host-a",
+  host: { name: "Same name" },
+};
+const envB = { ...envA, binding: "lease-b", workspaceId: "host-b" };
+const sourceChat = {
+  version: 1,
+  id: "original",
+  title: "Task",
+  updated: 1,
+  host: "Same name",
+  workspace: currentHost(envA),
+  draft: "Unsent draft",
+  attachments: [
+    { id: "a", name: "note", kind: "text", content: "draft attachment" },
+  ],
+  messages: [
+    { role: "user", content: "Inspect host A" },
+    {
+      role: "assistant",
+      content: "Result from A",
+      responseOutput: [{ type: "reasoning", encrypted_content: "opaque" }],
+      responseEndpoint: "endpoint",
+      responseModel: "model",
+    },
+  ],
+  paused: "Paused",
+  partial: "Unfinished",
+};
+test("conversation identity survives reconnect and rename, rejects duplicate labels, legacy chats and missing identity", () => {
+  assert.equal(
+    needsHostChoice(
+      sourceChat,
+      currentHost({ ...envA, binding: "new-lease", host: { name: "Renamed" } }),
+    ),
+    false,
+  );
+  assert.equal(needsHostChoice(sourceChat, currentHost(envB)), true);
+  assert.equal(
+    needsHostChoice({ ...sourceChat, workspace: undefined }, currentHost(envA)),
+    true,
+  );
+  assert.equal(
+    needsHostChoice({ ...sourceChat, messages: [] }, currentHost(envB)),
+    false,
+  );
+  for (const env of [
+    { connection: "local" },
+    { ...envA, connection: "disconnected" },
+    { ...envA, connection: "review-required" },
+  ])
+    assert.equal(currentHost(env), null);
+  assert.equal(
+    currentHost({ connection: "local", workspaceId: "local" }).id,
+    "local",
+  );
+  assert.equal(sameAcceptedHost(envA, envB), false);
+  assert.equal(
+    sameAcceptedHost(envA, { ...envA, binding: "replacement" }),
+    false,
+  );
+});
+test("host continuation preserves original, clears opaque reasoning, records boundary and persists ownership", async () => {
+  const original = structuredClone(sourceChat);
+  const branch = branchConversation(sourceChat, currentHost(envB));
+  assert.deepEqual(sourceChat, original);
+  assert.notEqual(branch.id, sourceChat.id);
+  assert.equal(branch.workspace.id, "host-b");
+  assert.equal(branch.messages[1].content, "Result from A");
+  assert.equal(branch.messages[1].responseOutput, undefined);
+  assert.equal(branch.draft, sourceChat.draft);
+  assert.equal(branch.partial, "");
+  assert.equal(branch.paused, "");
+  assert.equal(branch.hostChanges[0].messageIndex, 2);
+  assert.equal(branch.hostChanges[0].parentId, sourceChat.id);
+  assert.match(hostInstructions(branch), /Never assume old paths/);
+  const history = new History(memoryStorage());
+  await history.save(sourceChat, null);
+  await history.save(branch, null);
+  assert.deepEqual((await history.load(sourceChat.id)).conversation, original);
+  assert.deepEqual((await history.load(branch.id)).conversation, branch);
+});
