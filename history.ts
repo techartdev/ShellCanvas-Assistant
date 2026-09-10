@@ -18,6 +18,7 @@ export interface Conversation {
   host: string;
   partial?: string;
   error?: string;
+  paused?: string;
 }
 interface Header {
   version: 1;

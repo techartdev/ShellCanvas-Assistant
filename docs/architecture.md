@@ -3,14 +3,14 @@
 Canvas Assistant is a separately built, installable app. Its only runtime
 dependency on ShellCanvas is the public SDK's isolated, window-owned channel.
 
-| Responsibility | Owner |
-| --- | --- |
-| Layout, messages, attachments, review cards | `main.ts`, `style.css` |
-| Streaming Responses/Chat Completions and bounded tool loop | `agent.ts` |
-| Tool schemas and accepted-workspace operations | `tools.ts` |
-| Revision-checked conversation records | `history.ts` |
-| Endpoint configuration, HTTP, OS credentials | ShellCanvas `network` API |
-| File/console routing, grants, binding revocation | ShellCanvas host brokers |
+| Responsibility                                             | Owner                     |
+| ---------------------------------------------------------- | ------------------------- |
+| Layout, messages, attachments, review cards                | `main.ts`, `style.css`    |
+| Streaming Responses/Chat Completions and bounded tool loop | `agent.ts`                |
+| Tool schemas and accepted-workspace operations             | `tools.ts`                |
+| Revision-checked conversation records                      | `history.ts`              |
+| Endpoint configuration, HTTP, OS credentials               | ShellCanvas `network` API |
+| File/console routing, grants, binding revocation           | ShellCanvas host brokers  |
 
 ## Protocol
 
@@ -72,3 +72,20 @@ The [official Chat Completions reference](https://developers.openai.com/api/refe
 describes the wire format. No OpenAI SDK, CLI or Node sidecar runs in the app.
 The design follows ShellCanvas's existing optional WispCrew assessment; no
 WispCrew implementation or local-shell tool defaults were copied.
+
+## Run control
+
+Run limits are user settings, defaulting to 30 model rounds and 30 active
+minutes. The active deadline aborts pending work but pauses during action review.
+All emitted tool calls receive results, including canceled calls, before a run
+pauses; round limits are checked between complete model/tool exchanges. Continue
+is an explicit new user request using saved results and a freshly accepted
+workspace/toolkit, not a replay of previous calls or approvals. The previous
+console is closed. The request-size budget is checked before every model round.
+Communication guidance requests a brief initial plan, occasional meaningful
+updates and an outcome. Tool-only replies render tool cards without blank bubbles.
+
+Console reads batch nearby byte fragments (up to roughly 64k characters or one
+second of collection, with a 150 ms quiet window). An idle wait returns after
+10 seconds without canceling the stream; the next read reuses the pending read.
+This bounds each result without consuming a model round for every SSH fragment.

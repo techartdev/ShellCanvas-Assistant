@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+import { runLimits, RunPaused } from "./run-budget";
 import type { AppConnection, AppNetworkAPI, Json } from "@shellcanvas/app-sdk";
 export interface ToolCall {
   id: string;
@@ -34,6 +35,7 @@ export interface TurnOptions {
     result?: string,
   ): void;
   onRound(): void;
+  limits?: { rounds?: number };
 }
 export async function* sseEvents(
   chunks: AsyncIterable<Uint8Array>,
@@ -426,13 +428,15 @@ async function responsesCompletion(options: TurnOptions): Promise<Message> {
   }
 }
 export async function runAgent(options: TurnOptions): Promise<void> {
-  const started = Date.now();
-  let toolsUsed = 0;
-  for (let step = 0; step < 12; step++) {
+  const { rounds } = runLimits(options.limits);
+  for (let step = 0; step < rounds; step++) {
     options.signal.throwIfAborted();
-    if (Date.now() - started > 300000)
+    if (
+      new TextEncoder().encode(JSON.stringify(options.messages)).length >
+      2600000
+    )
       throw new Error(
-        "This turn reached five minutes. Review the results before continuing.",
+        "This conversation is too large for one model request. Export it or start a new conversation with a summary.",
       );
     options.onRound();
     const message = await completion(options);
@@ -444,8 +448,6 @@ export async function runAgent(options: TurnOptions): Promise<void> {
       options.onTool(call, "running");
       try {
         options.signal.throwIfAborted();
-        if (++toolsUsed > 20)
-          throw new Error("This turn reached its 20-tool limit.");
         const tool = options.tools.find(
           (tool) => tool.name === call.function.name,
         );
@@ -483,7 +485,8 @@ export async function runAgent(options: TurnOptions): Promise<void> {
       options.onTool(call, failed ? "failed" : "done", content);
     }
   }
-  throw new Error(
-    "This turn reached its 12-step limit. Review the results before continuing.",
+  options.signal.throwIfAborted();
+  throw new RunPaused(
+    `Paused after ${rounds} model rounds. Completed results are saved.`,
   );
 }

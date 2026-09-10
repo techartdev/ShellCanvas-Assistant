@@ -62,3 +62,14 @@ Provider support requires an appropriate streaming Responses or Chat Completions
 endpoint. The app has no automatic mutation retry, context compaction, background
 file index or model-driven package installation. Native operation timeouts and
 context limits are explicit; cancellation cannot reverse an accepted operation.
+
+## Run-control revision (0.1.3)
+
+All 18 tests pass, including tasks beyond the old 12-round/20-tool caps,
+30-round pause with paired results, configurable larger budgets, continuation
+without replay, per-request context sizing, approval-excluded active time,
+cancellation and batched console reads with retained idle reads. Build and
+repository packaging pass. A synthetic browser fixture also verified settings
+persistence, a 5000-round setting, clean pause/continue, retained drafts and
+results, no empty assistant bubbles, and delivery of the communication guidance.
+This fixture does not establish how every real model follows that guidance.

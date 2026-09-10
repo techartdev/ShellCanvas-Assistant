@@ -970,3 +970,26 @@ svg {
     animation: none;
   }
 }
+
+.run-paused {
+  max-width: 790px;
+  margin: 0 auto 12px;
+  padding: 12px;
+  border: 1px solid #52716d;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+}
+.run-paused span {
+  flex: 1;
+}
+.run-paused button {
+  border: 1px solid #6687ac;
+  border-radius: 7px;
+  padding: 8px 12px;
+  color: #edf4ff;
+  background: #31527b;
+  white-space: nowrap;
+}

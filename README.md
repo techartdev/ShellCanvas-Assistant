@@ -52,7 +52,13 @@ redirects or send a retained key to a changed endpoint.
 - Stop cancels pending work. It cannot undo completed remote operations. Inspect
   uncertain results before retrying. Reconnects do not silently redirect a turn.
 
-Per-turn limits are 12 model rounds, 20 tool calls and five minutes. Directory
+Runs default to 30 model rounds and 30 active minutes, configurable in Assistant
+settings (any positive whole number of rounds, 1–240 minutes). Approval waiting time is excluded.
+There is no separate 20-tool cap; each model response remains bounded to 32 tool
+calls. A limit pauses the run with a **Continue task** button and saved results.
+Continue starts a new run with current workspace checks and fresh action reviews;
+completed actions are not automatically replayed. Stop remains available.
+Directory
 summaries show up to 500 entries; ShellCanvas Files can browse the whole listing.
 Attachments are limited to eight items / 1.8 million encoded characters per
 message; the current desktop JSON request limit is 3 MiB. These are agent context

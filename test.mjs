@@ -556,9 +556,168 @@ test("console tool decodes UTF-8 split across reads and closes its owned session
   const get = (name) => kit.tools.find((t) => t.name === name);
   const signal = new AbortController().signal;
   await get("console_send").run({ text: "fixture\n" }, signal);
-  assert.equal((await get("console_read").run({}, signal)).output, "");
   assert.equal((await get("console_read").run({}, signal)).output, "€");
   assert.equal((await get("console_read").run({}, signal)).eof, true);
   await kit.close();
   assert.equal(closed, 1);
+});
+
+const { runLimits, activeDeadline, RunPaused } = await module("run-budget.ts");
+const { ConsoleOutput } = await module("console-output.ts");
+function workingModel(finishAfter) {
+  let count = 0;
+  return {
+    get count() {
+      return count;
+    },
+    async postJSON() {
+      count++;
+      return response(
+        count > finishAfter
+          ? [event({ content: "Verified and done." }, "stop")]
+          : [
+              event(
+                {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: `work-${count}`,
+                      function: { name: "inspect", arguments: "{}" },
+                    },
+                  ],
+                },
+                "tool_calls",
+              ),
+            ],
+      );
+    },
+  };
+}
+test("default runs pass the old 12-round and 20-tool caps and pause at 30 with paired results", async () => {
+  const network = workingModel(100),
+    messages = [];
+  let runs = 0;
+  await assert.rejects(
+    runAgent({
+      ...defaults,
+      network,
+      messages,
+      tools: [{ name: "inspect", run: async () => ({ completed: ++runs }) }],
+    }),
+    /Paused after 30/,
+  );
+  assert.equal(network.count, 30);
+  assert.equal(runs, 30);
+  assert.equal(messages.filter((m) => m.role === "tool").length, 30);
+  assert.equal(messages.at(-1).tool_call_id, "work-30");
+  // Continuing consumes the saved results; it never replays completed tool calls.
+  const continuation = workingModel(0);
+  await runAgent({
+    ...defaults,
+    network: continuation,
+    messages,
+    tools: [
+      {
+        name: "inspect",
+        run: async () => {
+          throw new Error("replayed");
+        },
+      },
+    ],
+  });
+  assert.equal(messages.at(-1).content, "Verified and done.");
+});
+test("user round budget permits a 41-round task and has no product ceiling", async () => {
+  assert.equal(runLimits().rounds, 30);
+  assert.equal(runLimits({ rounds: 100000 }).rounds, 100000);
+  for (const rounds of [0, -1, 1.5, NaN, Infinity, "40"])
+    assert.equal(runLimits({ rounds }).rounds, 30);
+  const network = workingModel(40);
+  await runAgent({
+    ...defaults,
+    network,
+    messages: [],
+    limits: { rounds: 60 },
+    tools: [{ name: "inspect", run: async () => ({ ok: true }) }],
+  });
+  assert.equal(network.count, 41);
+});
+test("context growth is checked before each new request", async () => {
+  const network = workingModel(10);
+  const messages = [{ role: "user", content: "x".repeat(2500000) }];
+  await assert.rejects(
+    runAgent({
+      ...defaults,
+      network,
+      messages,
+      tools: [{ name: "inspect", run: async () => "x".repeat(150000) }],
+    }),
+    /too large/,
+  );
+  assert.equal(network.count, 1);
+  assert.equal(messages.at(-1).role, "tool");
+});
+test("approval time is excluded, resumed work expires, and closed timers stay closed", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let now = 0;
+  t.mock.method(performance, "now", () => now);
+  const controller = new AbortController();
+  const deadline = activeDeadline(controller, 1000);
+  now = 300;
+  t.mock.timers.tick(300);
+  deadline.pause();
+  now += 100000;
+  t.mock.timers.tick(100000);
+  assert.equal(controller.signal.aborted, false);
+  deadline.resume();
+  now += 699;
+  t.mock.timers.tick(699);
+  assert.equal(controller.signal.aborted, false);
+  now++;
+  t.mock.timers.tick(1);
+  assert.ok(controller.signal.reason instanceof RunPaused);
+  deadline.close();
+  const second = new AbortController(),
+    closed = activeDeadline(second, 100);
+  closed.pause();
+  closed.close();
+  closed.resume();
+  t.mock.timers.tick(10000);
+  assert.equal(second.signal.aborted, false);
+});
+test("Stop during approval remains effective", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const controller = new AbortController(),
+    deadline = activeDeadline(controller, 1000);
+  deadline.pause();
+  controller.abort(new Error("Stopped by you."));
+  assert.equal(controller.signal.aborted, true);
+  deadline.close();
+});
+test("console batches chunks and keeps an idle pending read without duplication or data loss", async () => {
+  let reads = 0,
+    release;
+  const reader = new ConsoleOutput(async () => {
+    reads++;
+    if (reads === 1) return new TextEncoder().encode("first");
+    return new Promise((resolve) => {
+      release = resolve;
+    });
+  });
+  const signal = new AbortController().signal;
+  assert.equal((await reader.collect(signal, 2, 2)).output, "first");
+  assert.equal((await reader.collect(signal, 2, 2)).waiting, true);
+  assert.equal(reads, 2);
+  release(new TextEncoder().encode("next"));
+  assert.equal((await reader.collect(signal, 2, 2)).output, "next");
+  assert.equal(reads, 3);
+  release(null);
+  assert.equal((await reader.collect(signal, 2, 2)).eof, true);
+});
+test("cancel interrupts a pending console read promptly", async () => {
+  const controller = new AbortController();
+  const reader = new ConsoleOutput(async () => new Promise(() => {}));
+  const pending = reader.collect(controller.signal);
+  controller.abort(new Error("stop fixture"));
+  await assert.rejects(pending, /stop fixture/);
 });

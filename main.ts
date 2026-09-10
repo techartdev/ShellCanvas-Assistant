@@ -7,6 +7,7 @@ import {
   type AppValue,
   type Json,
 } from "@shellcanvas/app-sdk";
+import { activeDeadline, runLimits, RunPaused } from "./run-budget";
 import { runAgent, type Message, type ToolCall } from "./agent";
 import { workspaceTools, operatingGuide, type ReviewAction } from "./tools";
 import { History, type Conversation, type Attachment } from "./history";
@@ -36,7 +37,7 @@ const icons: Record<string, string> = {
 const icon = (name: string) =>
   `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] ?? icons.spark}</svg>`;
 const root = document.querySelector<HTMLDivElement>("#root")!;
-root.innerHTML = `<main class="assistant-shell"><aside class="sidebar"><div class="brand"><span class="brand-mark">${icon("spark")}</span><span>Canvas<span class="brand-sub">ASSISTANT</span></span></div><button id="new-chat" class="new-chat">${icon("plus")}New conversation</button><div class="history-heading">YOUR CONVERSATIONS<button id="refresh-history" class="icon-button" title="Refresh conversations" aria-label="Refresh conversations">↻</button></div><nav id="history" aria-label="Conversations"></nav><div class="sidebar-bottom"><span class="privacy-dot"></span><div>History stays here<small>Stored locally in ShellCanvas</small></div></div></aside><section class="conversation"><header class="chat-header"><button id="toggle-sidebar" class="icon-button mobile-menu" aria-label="Toggle conversation list">${icon("menu")}</button><div><div class="workspace-label"><span class="status-dot"></span><span id="host-name">Your workspace</span></div><span class="workspace-caption" id="host-caption">A little help, right where you work.</span></div><div class="header-actions"><button id="model-button" class="model-button">${icon("spark")}<span id="model-label">Connect a model</span><span>⌄</span></button><button id="settings" class="icon-button" aria-label="Assistant settings" title="Assistant settings">${icon("settings")}</button></div></header><div id="notice" class="notice" role="status" hidden></div><div id="messages" class="messages" tabindex="0"><section id="welcome" class="welcome"><div class="welcome-mark">${icon("spark")}</div><p class="eyebrow">A THOUGHTFUL PAIR OF HANDS</p><h1>Make room for<br><em>what comes next.</em></h1><p class="welcome-description">Explore your host, untangle a problem, or turn an idea into a few less things to do.</p><div class="suggestions"><button data-prompt="Help me understand this workspace. Discover its available services and explain what we can do here.">${icon("terminal")}<span>Get to know this host<small>Start with a little orientation</small></span>↗</button><button data-prompt="Explore the default file directory and summarize what is there without reading sensitive files.">${icon("folder")}<span>Find my way around<small>Explore files and folders</small></span>↗</button><button data-prompt="I have a problem to investigate. Help me narrow it down step by step, and ask what symptoms I am seeing.">${icon("spark")}<span>Untangle a problem<small>Think it through together</small></span>↗</button><button data-prompt="Help me review a configuration file. I will attach or choose the file; explain it before proposing edits.">${icon("file")}<span>Review a configuration<small>Understand before changing</small></span>↗</button></div></section><div id="thread" aria-live="off"></div></div><div class="composer-area"><div id="activity" class="activity" hidden></div><section id="approval" class="approval" hidden aria-label="Review assistant action"><p class="eyebrow">YOUR REVIEW</p><h3></h3><p class="approval-target"></p><pre tabindex="0"></pre><div><button id="deny-action">Decline</button><button id="approve-action" class="primary">Approve this action</button></div></section><div class="composer"><div id="attachments" class="attachments"></div><textarea id="prompt" rows="2" placeholder="Ask anything about your workspace…" aria-label="Message Canvas Assistant"></textarea><div class="composer-tools"><div><button id="attach-local" class="icon-button" aria-label="Attach local files" title="Attach local text or images">${icon("attach")}</button><button id="attach-remote" class="icon-button" aria-label="Attach remote file" title="Choose a remote text file">${icon("folder")}</button><button id="paste-attachment" class="icon-button" aria-label="Attach from clipboard" title="Attach clipboard image or text">${icon("clipboard")}</button><span class="composer-hint">Enter to send · Shift + Enter for a new line</span></div><button id="send" class="send-button" aria-label="Send message" title="Send message">${icon("arrow")}</button></div></div><div class="composer-footer"><span id="tools-label">Connecting to your desktop…</span><span>Changes stay in your hands.</span></div></div></section><section id="settings-panel" class="settings-panel" hidden aria-label="Assistant settings"><header><div><p class="eyebrow">MAKE IT YOURS</p><h2>Your assistant</h2></div><button id="close-settings" class="icon-button" aria-label="Close settings">${icon("close")}</button></header><label>Model<input id="model-input" placeholder="Enter a model ID" spellcheck="false"/></label><p class="settings-help">Use the model ID from your provider. Endpoints ending in /responses use the Responses API; other endpoints use Chat Completions.</p><div class="connection-card"><span class="eyebrow">MODEL CONNECTION</span><p id="endpoint-label">No endpoint configured</p><button id="configure-model">Configure endpoint & key</button><button id="forget-model" class="quiet">Forget connection</button></div><label class="setting-check"><input id="tools-enabled" type="checkbox" checked/><span>Allow workspace tools<small>Reads follow your task. Changes and console input require your review.</small></span></label><p class="settings-help">Your messages, selected attachments and requested tool results are sent to this endpoint when you send. History and credentials stay separate.</p><div class="settings-actions"><button id="save-settings" class="primary">Save settings</button><button id="export-chat">Export conversation</button><button id="duplicate-chat">Save a copy</button><button id="delete-chat" class="danger">Delete conversation</button></div></section><input id="local-files" type="file" accept="image/png,image/jpeg,image/webp,.txt,.md,.json,.yaml,.yml,.toml,.ini,.conf,.log,.csv,.ts,.js,.py,.rs,.sh,.xml,.html,.css" multiple hidden/></main>`;
+root.innerHTML = `<main class="assistant-shell"><aside class="sidebar"><div class="brand"><span class="brand-mark">${icon("spark")}</span><span>Canvas<span class="brand-sub">ASSISTANT</span></span></div><button id="new-chat" class="new-chat">${icon("plus")}New conversation</button><div class="history-heading">YOUR CONVERSATIONS<button id="refresh-history" class="icon-button" title="Refresh conversations" aria-label="Refresh conversations">↻</button></div><nav id="history" aria-label="Conversations"></nav><div class="sidebar-bottom"><span class="privacy-dot"></span><div>History stays here<small>Stored locally in ShellCanvas</small></div></div></aside><section class="conversation"><header class="chat-header"><button id="toggle-sidebar" class="icon-button mobile-menu" aria-label="Toggle conversation list">${icon("menu")}</button><div><div class="workspace-label"><span class="status-dot"></span><span id="host-name">Your workspace</span></div><span class="workspace-caption" id="host-caption">A little help, right where you work.</span></div><div class="header-actions"><button id="model-button" class="model-button">${icon("spark")}<span id="model-label">Connect a model</span><span>⌄</span></button><button id="settings" class="icon-button" aria-label="Assistant settings" title="Assistant settings">${icon("settings")}</button></div></header><div id="notice" class="notice" role="status" hidden></div><div id="messages" class="messages" tabindex="0"><section id="welcome" class="welcome"><div class="welcome-mark">${icon("spark")}</div><p class="eyebrow">A THOUGHTFUL PAIR OF HANDS</p><h1>Make room for<br><em>what comes next.</em></h1><p class="welcome-description">Explore your host, untangle a problem, or turn an idea into a few less things to do.</p><div class="suggestions"><button data-prompt="Help me understand this workspace. Discover its available services and explain what we can do here.">${icon("terminal")}<span>Get to know this host<small>Start with a little orientation</small></span>↗</button><button data-prompt="Explore the default file directory and summarize what is there without reading sensitive files.">${icon("folder")}<span>Find my way around<small>Explore files and folders</small></span>↗</button><button data-prompt="I have a problem to investigate. Help me narrow it down step by step, and ask what symptoms I am seeing.">${icon("spark")}<span>Untangle a problem<small>Think it through together</small></span>↗</button><button data-prompt="Help me review a configuration file. I will attach or choose the file; explain it before proposing edits.">${icon("file")}<span>Review a configuration<small>Understand before changing</small></span>↗</button></div></section><div id="thread" aria-live="off"></div></div><div class="composer-area"><div id="activity" class="activity" hidden></div><section id="run-paused" class="run-paused" hidden><span id="pause-reason"></span><button id="continue-run">Continue task</button></section><section id="approval" class="approval" hidden aria-label="Review assistant action"><p class="eyebrow">YOUR REVIEW</p><h3></h3><p class="approval-target"></p><pre tabindex="0"></pre><div><button id="deny-action">Decline</button><button id="approve-action" class="primary">Approve this action</button></div></section><div class="composer"><div id="attachments" class="attachments"></div><textarea id="prompt" rows="2" placeholder="Ask anything about your workspace…" aria-label="Message Canvas Assistant"></textarea><div class="composer-tools"><div><button id="attach-local" class="icon-button" aria-label="Attach local files" title="Attach local text or images">${icon("attach")}</button><button id="attach-remote" class="icon-button" aria-label="Attach remote file" title="Choose a remote text file">${icon("folder")}</button><button id="paste-attachment" class="icon-button" aria-label="Attach from clipboard" title="Attach clipboard image or text">${icon("clipboard")}</button><span class="composer-hint">Enter to send · Shift + Enter for a new line</span></div><button id="send" class="send-button" aria-label="Send message" title="Send message">${icon("arrow")}</button></div></div><div class="composer-footer"><span id="tools-label">Connecting to your desktop…</span><span>Changes stay in your hands.</span></div></div></section><section id="settings-panel" class="settings-panel" hidden aria-label="Assistant settings"><header><div><p class="eyebrow">MAKE IT YOURS</p><h2>Your assistant</h2></div><button id="close-settings" class="icon-button" aria-label="Close settings">${icon("close")}</button></header><label>Model<input id="model-input" placeholder="Enter a model ID" spellcheck="false"/></label><p class="settings-help">Use the model ID from your provider. Endpoints ending in /responses use the Responses API; other endpoints use Chat Completions.</p><div class="connection-card"><span class="eyebrow">MODEL CONNECTION</span><p id="endpoint-label">No endpoint configured</p><button id="configure-model">Configure endpoint & key</button><button id="forget-model" class="quiet">Forget connection</button></div><label class="setting-check"><input id="tools-enabled" type="checkbox" checked/><span>Allow workspace tools<small>Reads follow your task. Changes and console input require your review.</small></span></label><p class="settings-help">Your messages, selected attachments and requested tool results are sent to this endpoint when you send. History and credentials stay separate.</p><label>Model rounds per run<input id="run-rounds" type="number" min="1" step="1"/></label><p class="settings-help">One round is a model response, which may use several tools. Default: 30. Set any positive whole number of rounds.</p><label>Active minutes per run<input id="run-minutes" type="number" min="1" max="240" step="1"/></label><p class="settings-help">Default: 30 minutes. Time reading action approvals is excluded. Larger limits can use more API credit. You can stop at any time.</p><div class="settings-actions"><button id="save-settings" class="primary">Save settings</button><button id="export-chat">Export conversation</button><button id="duplicate-chat">Save a copy</button><button id="delete-chat" class="danger">Delete conversation</button></div></section><input id="local-files" type="file" accept="image/png,image/jpeg,image/webp,.txt,.md,.json,.yaml,.yml,.toml,.ini,.conf,.log,.csv,.ts,.js,.py,.rs,.sh,.xml,.html,.css" multiple hidden/></main>`;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 const prompt = $<HTMLTextAreaElement>("prompt");
@@ -76,6 +77,7 @@ let connection: AppConnection | null = null,
   environment: AppEnvironment,
   model = "",
   settingsRecord: AppValue | null = null;
+let limits = runLimits();
 let busy = false,
   dirty = false,
   ready = false,
@@ -262,7 +264,11 @@ function renderThread() {
           )
           .map((part) => part.text)
           .join("\n\n");
-      const card = messageCard(message.role, content);
+      // Tool-only model responses have no prose to display.
+      const card =
+        message.role === "assistant" && !content.trim()
+          ? null
+          : messageCard(message.role, content);
       if (Array.isArray(message.content))
         for (const part of message.content) {
           if (
@@ -279,7 +285,7 @@ function renderThread() {
             const img = el("img", "message-image");
             img.src = part.image_url.url;
             img.alt = "Attached image";
-            card.append(img);
+            card?.append(img);
           }
         }
       for (const call of message.tool_calls ?? []) toolCard(call, "done");
@@ -299,7 +305,17 @@ function renderThread() {
     const card = messageCard("assistant", conversation.partial);
     card.append(el("small", "partial-label", "Interrupted response"));
   }
-  if (conversation.error) notify(conversation.error, true);
+  const paused =
+    conversation.paused ||
+    (conversation.error &&
+    /reached its 12-step limit|reached its 20-tool limit|reached five minutes/.test(
+      conversation.error,
+    )
+      ? "The previous run stopped at its old limit. Completed results are saved."
+      : "");
+  $("run-paused").hidden = busy || !paused;
+  $("pause-reason").textContent = paused;
+  if (conversation.error && !paused) notify(conversation.error, true);
   $("messages").scrollTop = $("messages").scrollHeight;
 }
 function toolCard(
@@ -445,6 +461,9 @@ function setBusy(value: boolean) {
     "save-settings",
     "model-input",
     "tools-enabled",
+    "run-rounds",
+    "run-minutes",
+    "continue-run",
     "attach-local",
     "attach-remote",
     "paste-attachment",
@@ -464,7 +483,7 @@ function setBusy(value: boolean) {
   void renderHistory().catch(report);
   if (!value) void refreshEnvironment().catch(report);
 }
-async function send() {
+async function send(continuing = false) {
   if (busy) {
     active?.abort(new Error("Stopped by you."));
     pendingReview?.(false);
@@ -476,24 +495,33 @@ async function send() {
     notify("Choose an endpoint and model to begin.");
     return;
   }
-  if (!prompt.value.trim() && !conversation.attachments.length) return;
+  if (!continuing && !prompt.value.trim() && !conversation.attachments.length)
+    return;
   const accepted = await client.environment.get();
   const turn = new AbortController();
   active = turn;
-  const deadline = setTimeout(
-    () => turn.abort(new Error("Turn reached its five-minute limit.")),
-    300000,
-  );
+  const deadline = activeDeadline(turn, limits.minutes * 60000);
   let toolkit: Awaited<ReturnType<typeof workspaceTools>> | undefined;
   setBusy(true);
   notify("");
   conversation.error = "";
+  conversation.paused = "";
+  $("run-paused").hidden = true;
   conversation.partial = "";
   try {
-    toolkit = await workspaceTools(client, accepted, review);
-    const text = prompt.value.trim();
+    toolkit = await workspaceTools(client, accepted, async (action, signal) => {
+      deadline.pause();
+      try {
+        return await review(action, signal);
+      } finally {
+        deadline.resume();
+      }
+    });
+    const text = continuing
+      ? "Continue the unfinished task from the saved results. Briefly explain the next step. The previous console closed when the run stopped; inspect current state and uncertain outcomes before proposing further actions. Do not repeat completed changes."
+      : prompt.value.trim();
     const content: Json[] = [{ type: "text", text }];
-    for (const attachment of conversation.attachments)
+    for (const attachment of continuing ? [] : conversation.attachments)
       content.push(
         attachment.kind === "image"
           ? { type: "image_url", image_url: { url: attachment.content } }
@@ -504,7 +532,7 @@ async function send() {
       );
     const user: Message = {
       role: "user",
-      content: conversation.attachments.length ? content : text,
+      content: !continuing && conversation.attachments.length ? content : text,
     };
     const messages: Message[] = [
       {
@@ -525,9 +553,11 @@ async function send() {
         ? (text || "Image conversation").slice(0, 60)
         : conversation.title;
     conversation.host = accepted.host?.name ?? "Local workspace";
-    conversation.draft = "";
-    conversation.attachments = [];
-    prompt.value = "";
+    if (!continuing) {
+      conversation.draft = "";
+      conversation.attachments = [];
+      prompt.value = "";
+    }
     changed();
     renderThread();
     renderAttachments();
@@ -548,6 +578,7 @@ async function send() {
         messages,
         tools: toolsEnabled ? toolkit.tools : [],
         signal: turn.signal,
+        limits,
         onRound() {
           sync();
           currentAssistant = null;
@@ -560,6 +591,7 @@ async function send() {
                 scroller.scrollTop -
                 scroller.clientHeight <
               100;
+          if (!text.trim() && !currentAssistant) return;
           currentAssistant ??= messageCard("assistant", "");
           currentAssistantText = text;
           richText(currentAssistant, text);
@@ -586,15 +618,21 @@ async function send() {
       throw error;
     }
   } catch (error) {
-    conversation.error = turn.signal.aborted
-      ? "Stopped. Completed actions remain completed; inspect any uncertain remote outcome before retrying."
-      : error instanceof Error
-        ? error.message
-        : String(error);
-    report(conversation.error);
+    const cause = turn.signal.aborted ? turn.signal.reason : error;
+    if (cause instanceof RunPaused) {
+      conversation.paused = cause.message;
+      notify("");
+    } else {
+      conversation.error = turn.signal.aborted
+        ? "Stopped. Completed actions remain completed; inspect any uncertain remote outcome before retrying."
+        : error instanceof Error
+          ? error.message
+          : String(error);
+      report(conversation.error);
+    }
     changed();
   } finally {
-    clearTimeout(deadline);
+    deadline.close();
     await toolkit?.close();
     active = null;
     setBusy(false);
@@ -609,6 +647,8 @@ function showSettings(show: boolean) {
   if (show) {
     $<HTMLInputElement>("model-input").value = model;
     $<HTMLInputElement>("tools-enabled").checked = toolsEnabled;
+    $<HTMLInputElement>("run-rounds").value = String(limits.rounds);
+    $<HTMLInputElement>("run-minutes").value = String(limits.minutes);
     updateConnection();
   }
 }
@@ -680,9 +720,16 @@ async function start() {
   history = new History(client.storage);
   settingsRecord = await client.settings.get("preferences");
   const preferences = settingsRecord?.value as
-    { model?: string; toolsEnabled?: boolean } | undefined;
+    | {
+        model?: string;
+        toolsEnabled?: boolean;
+        rounds?: number;
+        minutes?: number;
+      }
+    | undefined;
   model = preferences?.model ?? "";
   toolsEnabled = preferences?.toolsEnabled !== false;
+  limits = runLimits(preferences);
   await client.network
     .profile("model")
     .then((value) => (connection = value))
@@ -705,6 +752,9 @@ async function start() {
     },
     { once: true },
   );
+  $("continue-run").onclick = () => {
+    void send(true).catch(report);
+  };
   $("send").onclick = () => {
     void send().catch(report);
   };
@@ -756,16 +806,31 @@ async function start() {
       const value = $<HTMLInputElement>("model-input").value.trim();
       if (!value || value.length > 200)
         throw new Error("Enter a model ID of 1–200 characters.");
+      const rounds = $<HTMLInputElement>("run-rounds").valueAsNumber;
+      const minutes = $<HTMLInputElement>("run-minutes").valueAsNumber;
+      if (
+        !Number.isSafeInteger(rounds) ||
+        rounds < 1 ||
+        !Number.isInteger(minutes) ||
+        minutes < 1 ||
+        minutes > 240
+      )
+        throw new Error(
+          "Choose a positive whole number of model rounds and 1–240 active minutes.",
+        );
       const next = await client.settings.put(
         "preferences",
         {
           model: value,
+          rounds,
+          minutes,
           toolsEnabled: $<HTMLInputElement>("tools-enabled").checked,
         },
         settingsRecord?.revision ?? null,
       );
       settingsRecord = next;
       model = value;
+      limits = { rounds, minutes };
       toolsEnabled = $<HTMLInputElement>("tools-enabled").checked;
       updateConnection();
       await refreshEnvironment();
