@@ -33,6 +33,9 @@ preview app, not a signed desktop release or a cross-platform certification.
   composer, attachment preview and scrolling settings remained usable without
   horizontal page overflow.
 
+- Version 0.1.2 was also installed with storage and network grants denied: it displayed session-only history and refused network setup before opening a credential dialog. Approved access was restored, and a live Terra reply succeeded afterward.
+- A fresh application restart preserved the installed version, model, endpoint, saved-key presence and an earlier sent-image conversation. The final desktop was reopened without the temporary debugging port.
+
 ## Automated checks
 
 Eleven app tests cover split UTF-8/SSE, both API protocols, stateless reasoning
@@ -44,7 +47,7 @@ ShellCanvas's separate broker tests check permission denial before native access
 window ownership, bounded streams and late-start cancellation. Its repository
 checks cover malformed manifests, unsafe paths, identity/digest mismatches,
 cancellation and persisted update provenance. The exported SDK was independently
-installed into fresh projects outside the desktop checkout and built successfully.
+installed into fresh projects outside the desktop checkout and built successfully. A fresh public assistant clone also passed npm ci, all eleven tests, build and repository packaging with no generated worktree changes.
 
 No live host contents, credentials or personal conversation logs are included in
 this repository. Test descriptions above are evidence of the stated workflows,
