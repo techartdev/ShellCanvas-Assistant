@@ -9,6 +9,7 @@ import {
 } from "@shellcanvas/app-sdk";
 import {
   currentHost,
+  hostChoiceMessage,
   needsHostChoice,
   sameAcceptedHost,
   branchConversation,
@@ -263,8 +264,8 @@ function renderHostContext() {
     "Unverified original host";
   warning.textContent =
     target && !needsHostChoice(conversation, target)
-      ? `Conversation host: ${origin}`
-      : `Conversation host: ${origin}. ${target ? `Current host: ${target.name}. Choose where to continue when you send.` : "Connect and accept a host to continue."}`;
+      ? `Conversation host: ${target.name}`
+      : `${conversation.workspace ? `Conversation host: ${origin}.` : `Original host identity unknown (saved label: ${origin}).`} ${target ? `Current host: ${target.name}. Choose where to continue when you send.` : "Connect and accept a host to continue."}`;
 }
 async function checkConversationHost(
   accepted: AppEnvironment,
@@ -283,11 +284,13 @@ async function checkConversationHost(
   const sourceId = conversation.id;
   const choice = await client.system.dialogs.messageBox({
     title: "Choose the conversation host",
-    message: `This conversation belongs to ${original}. You are now on ${target.name}. ${conversation.workspace ? "" : "This older chat has no verified workspace identity. "}Start a new chat, return to the original host using the desktop host menu, or create a separate continuation with the old messages as reference. No request has been sent.`,
+    message: hostChoiceMessage(conversation, target),
     kind: "warning",
     buttons: [
       { id: "new", label: `New chat on ${target.name}` },
-      { id: "back", label: "Use original host" },
+      ...(conversation.workspace
+        ? [{ id: "back", label: "Use original host" }]
+        : []),
       { id: "branch", label: `Create continuation on ${target.name}` },
       { id: "cancel", label: "Cancel" },
     ],
@@ -625,8 +628,7 @@ async function send(continuing = false) {
     checkingHost = false;
     setBusy(false);
   }
-  if (!conversation.messages.length) conversation.workspace = currentHost(accepted)!;
-  else conversation.workspace ??= currentHost(accepted)!;
+  conversation.workspace = currentHost(accepted)!;
   const turn = new AbortController();
   active = turn;
   const deadline = activeDeadline(turn, limits.minutes * 60000);
@@ -792,6 +794,7 @@ async function refreshEnvironment() {
   environment = await client.environment.get();
   renderHostContext();
   $("host-name").textContent =
+    currentHost(environment)?.name ??
     environment.host?.name ??
     (environment.connection === "local"
       ? "Local workspace"

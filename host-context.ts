@@ -20,7 +20,16 @@ export function currentHost(environment: AppEnvironment): HostContext | null {
   )
     return null;
   const id = environment.workspaceId;
-  return id ? { id, name: environment.host?.name ?? "Local workspace" } : null;
+  return id
+    ? {
+        id,
+        name: environment.host
+          ? [environment.host.name, environment.host.target]
+              .filter(Boolean)
+              .join(" · ")
+          : "Local workspace",
+      }
+    : null;
 }
 export function needsHostChoice(
   conversation: Conversation,
@@ -78,4 +87,13 @@ export function branchConversation(
 export function hostInstructions(conversation: Conversation): string {
   if (!conversation.hostChanges?.length) return "";
   return `\nHOST CONTEXT BOUNDARIES (message indices are zero-based): ${JSON.stringify(conversation.hostChanges)}\nMessages before each boundary describe the previous host, including paths, files, OS, tool output and approvals. Treat that history as reference only. The user authorized a separate conversation on the current host, not replay of previous actions. Before remote work, discover the current workspace and its capabilities and inspect the current host. Never assume old paths, credentials, consoles, file revisions or approvals apply. Explain your plan for the current host.`;
+}
+
+export function hostChoiceMessage(
+  conversation: Conversation,
+  target: HostContext,
+): string {
+  if (!conversation.workspace)
+    return `This older conversation was saved with the label “${conversation.host || "Unknown host"}”, but no target identity. We cannot verify whether it belongs to ${target.name}, even if the names match. Start a new chat or explicitly create a separate continuation on this host. The original chat stays unchanged. No request has been sent.`;
+  return `This conversation belongs to ${conversation.workspace.name}. You are now on ${target.name}. Start a new chat, return to the original host using the desktop host menu, or create a separate continuation with the old messages as reference. No request has been sent.`;
 }

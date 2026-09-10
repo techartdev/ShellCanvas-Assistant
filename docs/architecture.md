@@ -111,3 +111,8 @@ Legacy chats have only a label and therefore require an explicit choice, even
 when the label matches. Unknown identity or unaccepted/disconnected environments
 cannot send. Older desktops without workspaceId must be updated. A connection
 change while confirmation is open invalidates that choice.
+
+Workspace labels use the user-chosen connection name plus the SDK's optional
+non-secret target description. Labels never participate in identity comparison.
+Legacy warnings explicitly say the original target is unknown; they do not claim
+a mismatch or offer a return action to an unknowable original target.

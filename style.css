@@ -1015,3 +1015,17 @@ svg {
   font-size: 12px;
   overflow-wrap: anywhere;
 }
+
+.chat-header > div:nth-child(2) {
+  min-width: 0;
+}
+.workspace-label {
+  min-width: 0;
+}
+#host-name {
+  overflow-wrap: anywhere;
+}
+.status-dot,
+.header-actions {
+  flex-shrink: 0;
+}

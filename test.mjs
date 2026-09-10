@@ -813,3 +813,23 @@ test("host continuation preserves original, clears opaque reasoning, records bou
   assert.deepEqual((await history.load(sourceChat.id)).conversation, original);
   assert.deepEqual((await history.load(branch.id)).conversation, branch);
 });
+
+test("host labels include destinations and legacy warnings do not assert a known original target", async () => {
+  const { currentHost, hostChoiceMessage } = await module("host-context.ts");
+  const target = currentHost({
+    ...envA,
+    host: { name: "Mac", target: "user@mac.example:22" },
+  });
+  assert.equal(target.name, "Mac · user@mac.example:22");
+  const legacy = hostChoiceMessage(
+    { ...sourceChat, workspace: undefined, host: "SSH host" },
+    target,
+  );
+  assert.match(legacy, /cannot verify/i);
+  assert.match(legacy, /Mac · user@mac.example:22/);
+  assert.doesNotMatch(legacy, /conversation belongs to/);
+  assert.match(
+    hostChoiceMessage(sourceChat, target),
+    /conversation belongs to/,
+  );
+});
