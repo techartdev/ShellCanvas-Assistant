@@ -7,6 +7,7 @@ import type {
   RemoteConsole,
 } from "@shellcanvas/app-sdk";
 import { ConsoleOutput } from "./console-output";
+import { visibleConsoleInput } from "./presentation";
 import type { Tool } from "./agent";
 export type ReviewAction = (
   action: { title: string; detail: string; target: string },
@@ -194,7 +195,7 @@ export async function workspaceTools(
     tools.push({
       name: "console_send",
       description:
-        "Send reviewed text to a dedicated interactive console. Not independent exec: output is a byte stream, there is no exit-code guarantee, and the console may belong to a different device from the file service. Include newline to submit. Never assume a POSIX shell.",
+        "Send reviewed exact bytes to this turn's dedicated interactive console. The first send opens a fresh console; earlier turns' pending commands do not survive. Use carriage return (\\r) for the Enter key; LF (\\n) is not accepted as Enter by every device. Read output to observe results. Never assume a POSIX shell or an exit status. Prefer non-paged commands on network devices.",
       parameters: schema(
         {
           text: str(
@@ -205,7 +206,16 @@ export async function workspaceTools(
       ),
       run: async (args, signal) => {
         const text = string(args, "text", 8192);
-        await approve("Send to remote console", text, signal);
+        if (!text)
+          throw new Error(
+            "Console input is empty. Use console_read to observe output.",
+          );
+        const opened = !consoleSession;
+        await approve(
+          "Send to remote console",
+          `${opened ? "Opens a fresh console for this turn.\n\n" : ""}${visibleConsoleInput(text)}`,
+          signal,
+        );
         if (!consoleSession) {
           consoleSession = await client.console.open(
             { binding: await binding(), cols: 100, rows: 30 },
@@ -217,7 +227,8 @@ export async function workspaceTools(
         await consoleSession.write(text, signal);
         return {
           sent: true,
-          note: "Use console_read to observe output. Submission does not prove command success.",
+          opened,
+          note: "Use console_read to observe output. Submission does not prove command success. Control characters shown in the review are labels; the original bytes were sent unchanged.",
         };
       },
     });

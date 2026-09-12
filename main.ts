@@ -20,6 +20,9 @@ import { runAgent, type Message, type ToolCall } from "./agent";
 import { workspaceTools, operatingGuide, type ReviewAction } from "./tools";
 import { History, type Conversation, type Attachment } from "./history";
 import { memoryStorage } from "./memory-storage";
+import { applyAppearance } from "./theme";
+import { visibleConsoleInput, toolResult, markdownTable } from "./presentation";
+applyAppearance(null);
 const icons: Record<string, string> = {
   spark:
     '<path d="m12 3 2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4Z"/>',
@@ -217,7 +220,33 @@ function richText(container: HTMLElement, text: string) {
       container.append(block);
       return;
     }
-    for (const line of segment.split("\n")) {
+    const lines = segment.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const tableData = markdownTable(lines, i);
+      if (tableData) {
+        const wrapper = el("div", "table-scroll");
+        const table = el("table");
+        const head = el("thead"),
+          header = el("tr"),
+          body = el("tbody");
+        for (const cell of tableData.header) {
+          const th = el("th", "", cell);
+          th.scope = "col";
+          header.append(th);
+        }
+        head.append(header);
+        for (const cells of tableData.rows) {
+          const row = el("tr");
+          for (const cell of cells) row.append(el("td", "", cell));
+          body.append(row);
+        }
+        table.append(head, body);
+        wrapper.append(table);
+        container.append(wrapper);
+        i = tableData.end - 1;
+        continue;
+      }
+      const line = lines[i];
       const heading = /^(#{1,3})\s+(.*)/.exec(line);
       const paragraph = el(
         heading ? "h3" : "p",
@@ -395,7 +424,10 @@ function renderThread() {
     } else if (message.role === "tool" && message.tool_call_id) {
       const card = toolCards.get(message.tool_call_id);
       if (card && typeof message.content === "string") {
-        card.querySelector("pre")!.textContent = message.content;
+        card.querySelector(".tool-result")!.textContent = toolResult(
+          card.dataset.tool ?? "",
+          message.content,
+        );
         card.querySelector("span")!.textContent = message.content.includes(
           '"error":',
         )
@@ -442,7 +474,22 @@ function toolCard(
     const name = el("strong", "", call.function.name.replaceAll("_", " "));
     summary.innerHTML = icon("terminal");
     summary.append(name, el("span"));
-    card.append(summary, el("pre", "", call.function.arguments));
+    card.dataset.tool = call.function.name;
+    let input = call.function.arguments;
+    if (call.function.name === "console_send") {
+      try {
+        const args = JSON.parse(input);
+        if (typeof args.text === "string")
+          input = visibleConsoleInput(args.text);
+      } catch {
+        /* Keep malformed arguments visible. */
+      }
+    }
+    card.append(
+      summary,
+      el("pre", "tool-input", `Input\n${input}`),
+      el("pre", "tool-result"),
+    );
     $("thread").append(card);
     toolCards.set(call.id, card);
   }
@@ -453,7 +500,11 @@ function toolCard(
       : state === "failed"
         ? "Needs attention"
         : "Completed";
-  if (result) card.querySelector("pre")!.textContent = result;
+  if (result)
+    card.querySelector(".tool-result")!.textContent = toolResult(
+      call.function.name,
+      result,
+    );
 }
 function renderAttachments() {
   const area = $("attachments");
@@ -792,6 +843,7 @@ function updateConnection() {
 }
 async function refreshEnvironment() {
   environment = await client.environment.get();
+  applyAppearance(environment);
   renderHostContext();
   $("host-name").textContent =
     currentHost(environment)?.name ??

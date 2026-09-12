@@ -2,6 +2,66 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { build } from "esbuild";
+const { resolveAppearance } = await module("theme.ts");
+const { visibleConsoleInput, toolResult, markdownTable } =
+  await module("presentation.ts");
+test("appearance follows explicit host mode and validated custom tokens", () => {
+  assert.equal(resolveAppearance(null, false).mode, "light");
+  assert.equal(
+    resolveAppearance(
+      {
+        appearance: {
+          mode: "dark",
+          colors: {
+            accent: "#123456",
+            text: "url(secret)",
+            untrusted: "#abcdef",
+          },
+        },
+      },
+      false,
+    ).colors.accent,
+    "#123456",
+  );
+  const theme = resolveAppearance(
+    { appearance: { mode: "light", colors: { text: "url(secret)" } } },
+    true,
+  );
+  assert.equal(theme.mode, "light");
+  assert.equal(theme.colors.text, "#202024");
+  assert.equal(theme.colors.untrusted, undefined);
+});
+test("console review distinguishes invisible keys without changing printable input", () => {
+  assert.equal(visibleConsoleInput("\r"), "[Enter / CR]");
+  assert.equal(visibleConsoleInput("\x04"), "[Ctrl+D]");
+  assert.equal(visibleConsoleInput("D"), "D");
+  assert.equal(visibleConsoleInput("q"), "q");
+  assert.equal(visibleConsoleInput(""), "[No input]");
+  assert.equal(visibleConsoleInput(" "), "[Space]");
+  assert.equal(
+    visibleConsoleInput("print\r\n"),
+    "print[Enter / CR][LF / newline]\n",
+  );
+  assert.equal(
+    toolResult(
+      "console_read",
+      JSON.stringify({ output: "one\r\ntwo", eof: true }),
+    ),
+    "one\ntwo\n[Console closed]",
+  );
+});
+test("Markdown tables retain untrusted cell text and reject incomplete separators", () => {
+  const table = markdownTable(
+    ["| Name | State |", "| --- | :---: |", "| <script> | a\\|b |", "after"],
+    0,
+  );
+  assert.deepEqual(table, {
+    header: ["Name", "State"],
+    rows: [["<script>", "a|b"]],
+    end: 3,
+  });
+  assert.equal(markdownTable(["a|b", "not|a separator"], 0), null);
+});
 async function module(path) {
   const result = await build({
     entryPoints: [path],
@@ -832,4 +892,40 @@ test("host labels include destinations and legacy warnings do not assert a known
     hostChoiceMessage(sourceChat, target),
     /conversation belongs to/,
   );
+});
+
+test("console review labels never alter sent bytes and empty sends do not open a session", async () => {
+  const fixture = workspaceFixture();
+  let opened = 0;
+  const writes = [],
+    reviews = [];
+  fixture.client.console = {
+    open: async () => {
+      opened++;
+      return {
+        write: async (text) => writes.push(text),
+        read: async () => null,
+        close: async () => {},
+      };
+    },
+  };
+  const kit = await workspaceTools(
+    fixture.client,
+    await fixture.client.environment.get(),
+    async (review) => {
+      reviews.push(review);
+      return true;
+    },
+  );
+  const send = kit.tools.find((tool) => tool.name === "console_send");
+  const signal = new AbortController().signal;
+  await assert.rejects(send.run({ text: "" }, signal));
+  assert.equal(opened, 0);
+  assert.equal(reviews.length, 0);
+  const bytes = "query\r\u0004";
+  await send.run({ text: bytes }, signal);
+  assert.deepEqual(writes, [bytes]);
+  assert.match(JSON.stringify(reviews), /Enter \/ CR/);
+  assert.match(JSON.stringify(reviews), /Ctrl\+D/);
+  await kit.close();
 });

@@ -116,3 +116,17 @@ Workspace labels use the user-chosen connection name plus the SDK's optional
 non-secret target description. Labels never participate in identity comparison.
 Legacy warnings explicitly say the original target is unknown; they do not claim
 a mismatch or offer a return action to an unknowable original target.
+
+## Desktop appearance and tool presentation
+
+The assistant consumes optional `environment.appearance` colors and mode, and
+updates its semantic CSS variables when environment events arrive. Older desktop
+versions use a neutral palette based on the OS color preference. Theme changes
+do not recreate conversations or change their host binding.
+
+Tool calls collapse into compact single-line disclosures. Expanded calls keep
+both the original input and result. Console control characters have visible
+review labels (for example `[Enter / CR]`); the console receives the original
+bytes, never these labels. Empty input is rejected. Each turn opens its own
+console, so pending input from a previous turn is not retained. Console results
+show readable lines; Markdown tables use DOM text nodes, including untrusted cells.
