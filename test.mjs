@@ -929,3 +929,183 @@ test("console review labels never alter sent bytes and empty sends do not open a
   assert.match(JSON.stringify(reviews), /Ctrl\+D/);
   await kit.close();
 });
+
+test("DeepSeek base URLs explain the full endpoint before sending a request", async () => {
+  for (const path of ["", "/", "/v1", "/v1/"]) {
+    await assert.rejects(
+      completion({
+        ...defaults,
+        connection: {
+          ...connection,
+          endpoint: "https://api.deepseek.com" + path,
+        },
+        network: {
+          postJSON() {
+            throw Error("must not request");
+          },
+        },
+      }),
+      /full request URL.*chat\/completions/,
+    );
+  }
+});
+
+test("Chat reasoning survives streamed tool rounds, persistence, and later user turns", async () => {
+  const profile = {
+    ...connection,
+    endpoint: "https://api.deepseek.com/chat/completions",
+  };
+  const messages = [{ role: "user", content: "Inspect the synthetic fixture" }];
+  let rounds = 0,
+    runs = 0;
+  const options = {
+    ...defaults,
+    connection: profile,
+    model: "deepseek-v4-pro",
+    messages,
+    tools: [
+      {
+        name: "inspect",
+        description: "Synthetic read",
+        parameters: { type: "object", properties: {} },
+        async run() {
+          runs++;
+          return "fixture";
+        },
+      },
+    ],
+    network: {
+      async postJSON({ body }) {
+        rounds++;
+        if (rounds === 1)
+          return response([
+            event({ reasoning_content: "fixture " }),
+            event({ reasoning_content: "reasoning €" }),
+            event(
+              {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: "call-fixture",
+                    function: { name: "inspect", arguments: "{}" },
+                  },
+                ],
+              },
+              "tool_calls",
+            ),
+          ]);
+        assert.equal(body.messages[1].reasoning_content, "fixture reasoning €");
+        assert.equal(body.messages[2].tool_call_id, "call-fixture");
+        return response([
+          event({ reasoning_content: "fixture final reasoning" }),
+          event({ content: "Done" }, "stop"),
+        ]);
+      },
+    },
+  };
+  await runAgent(options);
+  assert.equal(runs, 1);
+  assert.equal(rounds, 2);
+  const history = new History(memoryStorage());
+  const chat = {
+    ...structuredClone(sourceChat),
+    id: "reasoning-fixture",
+    messages,
+  };
+  await history.save(chat, null);
+  const loaded = (await history.load(chat.id)).conversation;
+  await completion({
+    ...options,
+    messages: [...loaded.messages, { role: "user", content: "Continue" }],
+    network: {
+      async postJSON({ body }) {
+        assert.equal(body.messages[1].reasoning_content, "fixture reasoning €");
+        assert.equal(
+          body.messages[3].reasoning_content,
+          "fixture final reasoning",
+        );
+        assert.equal(body.messages[1].chatReasoning, undefined);
+        return response([event({ content: "OK" }, "stop")]);
+      },
+    },
+  });
+});
+
+test("Chat reasoning is not forwarded to different endpoints, models, Responses or hosts", async () => {
+  const message = {
+    role: "assistant",
+    content: "Visible answer",
+    chatReasoning: {
+      content: "private provider state",
+      endpoint: connection.endpoint,
+      model: "fixture",
+    },
+  };
+  for (const change of [
+    { model: "different" },
+    { connection: { ...connection, endpoint: "https://other.invalid/chat" } },
+  ]) {
+    await completion({
+      ...defaults,
+      ...change,
+      messages: [message],
+      network: {
+        async postJSON({ body }) {
+          assert.deepEqual(body.messages, [
+            { role: "assistant", content: "Visible answer" },
+          ]);
+          return response([event({ content: "OK" }, "stop")]);
+        },
+      },
+    });
+  }
+  assert.doesNotMatch(
+    JSON.stringify(responsesInput([message], connection.endpoint, "fixture")),
+    /private provider state|chatReasoning/,
+  );
+  const chat = { ...structuredClone(sourceChat), messages: [message] };
+  const branch = branchConversation(chat, currentHost(envB));
+  assert.equal(branch.messages[0].chatReasoning, undefined);
+  assert.equal(
+    chat.messages[0].chatReasoning.content,
+    "private provider state",
+  );
+});
+
+test("Interrupted reasoning cannot dispatch tool calls", async () => {
+  let runs = 0;
+  await assert.rejects(
+    runAgent({
+      ...defaults,
+      messages: [{ role: "user", content: "fixture" }],
+      tools: [
+        {
+          name: "inspect",
+          description: "fixture",
+          parameters: {},
+          async run() {
+            runs++;
+          },
+        },
+      ],
+      network: {
+        async postJSON() {
+          return response([
+            event({
+              reasoning_content: "unfinished",
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "fixture",
+                  function: { name: "inspect", arguments: "{}" },
+                },
+              ],
+            }),
+          ]);
+        },
+      },
+    }),
+    /before completion/,
+  );
+  assert.equal(runs, 0);
+});

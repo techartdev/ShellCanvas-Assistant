@@ -130,3 +130,21 @@ review labels (for example `[Enter / CR]`); the console receives the original
 bytes, never these labels. Empty input is rejected. Each turn opens its own
 console, so pending input from a previous turn is not retained. Console results
 show readable lines; Markdown tables use DOM text nodes, including untrusted cells.
+
+## DeepSeek Chat Completions
+
+Configure the full endpoint `https://api.deepseek.com/chat/completions`, rather
+than the base URL `/` or `/v1`. The trusted desktop posts to the exact configured
+URL; the assistant does not redirect credentials or silently rewrite that URL.
+
+Chat Completions streams may include `reasoning_content`. The assistant retains
+that provider state with its endpoint and model and returns it only to the same
+endpoint/model in subsequent Chat requests. It is not displayed as answer text,
+forwarded to Responses, or copied into a continuation on a different host.
+It persists with conversation history and counts toward existing response and
+request size budgets. When changing providers or models, start a new chat if the
+new provider requires reasoning state unavailable in the old history.
+
+This implements the [DeepSeek thinking-mode tool contract](https://api-docs.deepseek.com/guides/thinking_mode/).
+Verification uses synthetic streams and tool results; no live API credential is
+used in the tests.

@@ -2,11 +2,11 @@
   "format": 1,
   "kind": "app-repository",
   "id": "dev.shellcanvas.assistant",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "title": "Canvas Assistant",
   "description": "An independent assistant for your ShellCanvas workspace.",
   "package": {
     "path": "dist/app.shellcanvas.json",
-    "sha256": "07c00eb1dd676ee03cd9d1d116ccde85af7f4880b2430e154f35a8946dd0e53d"
+    "sha256": "e384083f6f33857e97911dcecb0d0a0686514de0ea6702695a69d3870d6c12b9"
   }
 }

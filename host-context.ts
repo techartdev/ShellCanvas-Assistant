@@ -67,6 +67,7 @@ export function branchConversation(
   };
   // Opaque provider reasoning from the old host must not bypass the visible boundary.
   for (const message of copy.messages) {
+    delete message.chatReasoning;
     delete message.responseOutput;
     delete message.responseEndpoint;
     delete message.responseModel;

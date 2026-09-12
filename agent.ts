@@ -11,6 +11,7 @@ export interface Message {
   content: string | Json[] | null;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
+  chatReasoning?: { content: string; endpoint: string; model: string };
   responseOutput?: Json[];
   responseEndpoint?: string;
   responseModel?: string;
@@ -65,6 +66,14 @@ export async function* sseEvents(
   if (data.length) yield data.join("\n");
 }
 export async function completion(options: TurnOptions): Promise<Message> {
+  const endpoint = new URL(options.connection.endpoint);
+  if (
+    endpoint.hostname === "api.deepseek.com" &&
+    ["", "/", "/v1", "/v1/"].includes(endpoint.pathname)
+  )
+    throw new Error(
+      "DeepSeek needs the full request URL: https://api.deepseek.com/chat/completions. Change it in Configure endpoint & key, save the connection, then retry.",
+    );
   if (
     new URL(options.connection.endpoint).pathname
       .replace(/\/$/, "")
@@ -78,11 +87,17 @@ export async function completion(options: TurnOptions): Promise<Message> {
       body: {
         model: options.model,
         messages: options.messages.map(
-          ({ role, content, tool_calls, tool_call_id }) => ({
+          ({ role, content, tool_calls, tool_call_id, chatReasoning }) => ({
             role,
             content,
             ...(tool_calls ? { tool_calls } : {}),
             ...(tool_call_id ? { tool_call_id } : {}),
+            ...(role === "assistant" &&
+            chatReasoning &&
+            chatReasoning.endpoint === options.connection.endpoint &&
+            chatReasoning.model === options.model
+              ? { reasoning_content: chatReasoning.content }
+              : {}),
           }),
         ) as unknown as Json,
         stream: true,
@@ -133,6 +148,8 @@ export async function completion(options: TurnOptions): Promise<Message> {
       );
     }
     let text = "",
+      reasoning = "",
+      hasReasoning = false,
       finish = "";
     const calls = new Map<number, ToolCall>();
     for await (const event of sseEvents(chunks())) {
@@ -153,9 +170,15 @@ export async function completion(options: TurnOptions): Promise<Message> {
       if (typeof choice.finish_reason === "string")
         finish = choice.finish_reason;
       const delta = choice.delta ?? {};
+      if (typeof delta.reasoning_content === "string") {
+        hasReasoning = true;
+        reasoning += delta.reasoning_content;
+        if (reasoning.length + text.length > 512000)
+          throw new Error("Model response is too large for one turn.");
+      }
       if (typeof delta.content === "string") {
         text += delta.content;
-        if (text.length > 512000)
+        if (text.length + reasoning.length > 512000)
           throw new Error("Model response is too large for one turn.");
         options.onText(text);
       }
@@ -200,6 +223,15 @@ export async function completion(options: TurnOptions): Promise<Message> {
     return {
       role: "assistant",
       content: text || null,
+      ...(hasReasoning
+        ? {
+            chatReasoning: {
+              content: reasoning,
+              endpoint: options.connection.endpoint,
+              model: options.model,
+            },
+          }
+        : {}),
       ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
     };
   } finally {
