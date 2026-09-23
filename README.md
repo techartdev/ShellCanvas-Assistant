@@ -6,18 +6,19 @@ workspace's actual capabilities.
 
 ## Install
 
-In ShellCanvas, open **Apps → Install from GitHub**, enter
+In ShellCanvas, open **App Manager → Add apps → From GitHub**, enter
 `techartdev/ShellCanvas-Assistant` and reference `main`, then review the package
 and its permissions. The repository contains a prebuilt package plus a root
 `shellcanvas.repo.json` with its SHA-256. Installation downloads those files;
 it does not install Node, run build scripts or contact an app registry.
 
-Version 0.1.4 requires a ShellCanvas build with the app network API and
-`environment.workspaceId` (conversation host protection). Update the desktop
-before updating this app; older desktops cannot send from this version. The first native client
-target is Windows. ShellCanvas currently gates installed third-party app windows
-on macOS/Linux pending their isolation proofs; a working built-in desktop on
-Catalina does not mean installed apps are enabled there.
+Version 0.1.7 uses the desktop's app network API and `environment.workspaceId`
+for conversation host protection. Windows requires ShellCanvas 0.1.12 or later;
+Linux and macOS require ShellCanvas 0.1.13 or later, which enables installed app
+frames on those clients. This app has no native companion binary and its package
+is the same on each client. Native app-frame isolation passed Linux and Apple
+Silicon CI, while real assistant sessions on those clients still need manual
+testing.
 
 ## Connect a model
 

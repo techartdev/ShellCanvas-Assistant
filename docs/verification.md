@@ -55,8 +55,10 @@ not proof of arbitrary devices, model providers or client platforms.
 
 ## Deliberate boundaries
 
-Windows is the first supported installed-app client. macOS/Linux isolation,
-mobile clients, arbitrary HTTP protocols/headers, autonomous background work,
+Windows is the first client with a live assistant walkthrough. ShellCanvas
+0.1.13 passed native installed-app isolation probes on Linux and Apple Silicon;
+real assistant use on those clients, mobile clients, arbitrary HTTP
+protocols/headers, autonomous background work,
 multiple hosts per turn and WispCrew runtime integration remain future work.
 Provider support requires an appropriate streaming Responses or Chat Completions
 endpoint. The app has no automatic mutation retry, context compaction, background
